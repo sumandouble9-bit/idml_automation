@@ -9,9 +9,7 @@ import win32com.client
 JS = 1246973031  # ScriptLanguage.JAVASCRIPT
 
 
-# --------------------------------------------------------------------------- #
 #  InDesign crash / hang resilience (mirrors the pipeline's own helpers).      #
-# --------------------------------------------------------------------------- #
 def _is_rpc_error(exc: Exception) -> bool:
     s = str(exc).lower()
     return (
@@ -51,15 +49,14 @@ def restart_indesign(wait_seconds: int = 6):
     raise RuntimeError("Could not restart InDesign after multiple attempts")
 
 
-# --------------------------------------------------------------------------- #
-#  Pass 0 — break un-splittable single-cell text tables (poems / boxed song    #
-#  lines). A 1x1, text-only table that is TALLER than the page's text area      #
-#  cannot fit on a page and cannot split at row boundaries (it has one row), so #
-#  the injection force-grows its frame past the bottom margin. Converting it to #
-#  ordinary flowing text lets the lines break across pages within the margins.  #
-#  Only text-only single-cell tables taller than the text area are touched;     #
-#  real data tables and single-cell boxes holding an image are left alone.      #
-# --------------------------------------------------------------------------- #
+
+#  Pass 0 — break un-splittable single-cell text tables (poems / boxed song   
+#  lines). A 1x1, text-only table that is TALLER than the page's text area      
+#  cannot fit on a page and cannot split at row boundaries (it has one row), so 
+#  the injection force-grows its frame past the bottom margin. Converting it to 
+#  ordinary flowing text lets the lines break across pages within the margins.  
+#  Only text-only single-cell tables taller than the text area are touched;     
+#  real data tables and single-cell boxes holding an image are left alone.      
 def _break_poem_tables(app):
     js = r'''
     var doc = app.activeDocument;
@@ -106,11 +103,8 @@ def _break_poem_tables(app):
     '''
     return app.DoScript(js, JS)
 
-
-# --------------------------------------------------------------------------- #
-#  Pass 1 — make every cell's text visible (fix red dots) and make body rows   #
-#  breakable. NO font sizes are changed. Per-table no-regression guard.        #
-# --------------------------------------------------------------------------- #
+#  Pass 1 — make every cell's text visible (fix red dots) and make body rows   
+#  breakable. NO font sizes are changed. Per-table no-regression guard.        
 def _fix_tables_and_breakable(app):
     js = r'''
     var doc = app.activeDocument;
@@ -297,12 +291,9 @@ def _fix_tables_and_breakable(app):
     '''
     return app.DoScript(js, JS)
 
-
-# --------------------------------------------------------------------------- #
-#  Pass 2 — keep tables under the frame: reset margin-overgrown frames and let  #
-#  the table split onto the next page. GUARDED so un-splittable blocks keep     #
-#  their force-grow and the page count can never run away.                      #
-# --------------------------------------------------------------------------- #
+#  Pass 2 — keep tables under the frame: reset margin-overgrown frames and let
+#  the table split onto the next page. GUARDED so un-splittable blocks keep  
+#  their force-grow and the page count can never run away.                     
 def _fix_vertical(app):
     js = r'''
     var doc = app.activeDocument;
@@ -437,14 +428,11 @@ def _fix_vertical(app):
     '''
     return app.DoScript(js, JS)
 
-
-# --------------------------------------------------------------------------- #
-#  Pass 0.5 — stop justified cell text from spreading words/letters apart and    #
-#  let rows auto-grow. Switches any JUSTIFIED cell to left-aligned (no extra      #
-#  space between words), turns hyphenation OFF for now (so the width pass below    #
-#  widens columns to fit FULL words instead of breaking them), and lets rows       #
-#  grow so wrapped text is fully visible. No font size is ever changed.            #
-# --------------------------------------------------------------------------- #
+#  Pass 0.5 — stop justified cell text from spreading words/letters apart and    
+#  let rows auto-grow. Switches any JUSTIFIED cell to left-aligned (no extra      
+#  space between words), turns hyphenation OFF for now (so the width pass below    
+#  widens columns to fit FULL words instead of breaking them), and lets rows       
+#  grow so wrapped text is fully visible. No font size is ever changed. 
 def _align_autogrow_cells(app):
     js = r'''
     var doc = app.activeDocument;
@@ -490,14 +478,11 @@ def _align_autogrow_cells(app):
     '''
     return app.DoScript(js, JS)
 
-
-# --------------------------------------------------------------------------- #
-#  Pass 2.5 — LAST-RESORT hyphenation. After the width pass has widened columns   #
-#  to fit full words, a few cells may still be overset (the table is simply too    #
-#  narrow for that word at this font). Turn hyphenation on for ONLY those still-    #
-#  overset cells so the word breaks with a hyphen and becomes visible. Cells that   #
-#  already fit keep their full, un-hyphenated words. No font size change.           #
-# --------------------------------------------------------------------------- #
+#  Pass 2.5 — LAST-RESORT hyphenation. After the width pass has widened columns   
+#  to fit full words, a few cells may still be overset (the table is simply too    
+#  narrow for that word at this font). Turn hyphenation on for ONLY those still-    
+#  overset cells so the word breaks with a hyphen and becomes visible. Cells that   
+#  already fit keep their full, un-hyphenated words. No font size change.           
 def _hyphenate_overset_cells(app):
     js = r'''
     var doc = app.activeDocument;
@@ -531,14 +516,11 @@ def _hyphenate_overset_cells(app):
     '''
     return app.DoScript(js, JS)
 
-
-# --------------------------------------------------------------------------- #
-#  Pass 3 — centre a narrow, left-aligned table that has empty space beside it. #
-#  A table whose columns sum to less than the text column is shifted right by   #
-#  half the leftover (via the table paragraph's left indent) so it sits centred  #
-#  under the text frame. No width, inset or font change -- only the position.    #
-#  Image tables and full-width / over-wide tables are left alone.                #
-# --------------------------------------------------------------------------- #
+#  Pass 3 — centre a narrow, left-aligned table that has empty space beside it. 
+#  A table whose columns sum to less than the text column is shifted right by   
+#  half the leftover (via the table paragraph's left indent) so it sits centred  
+#  under the text frame. No width, inset or font change -- only the position.    
+#  Image tables and full-width / over-wide tables are left alone.                
 def _center_narrow_tables(app):
     js = r'''
     var doc = app.activeDocument;

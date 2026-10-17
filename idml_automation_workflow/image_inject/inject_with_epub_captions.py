@@ -9,11 +9,11 @@ from datetime import datetime
 
 # Make same-folder modules importable regardless of the working directory.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import fix_image_layout    # standalone post-injection pass (does not alter injection logic)
-import logo_inject         # dedicated, isolated logo injection (never touches body images)
-import fix_table_fit       # table-only fixer: cell overset (no font change) + centering
-import epub_tools          # extracts EPUB images + builds image->caption map
-import epub_caption_apply  # places EPUB captions below images (post-injection)
+import fix_image_layout    
+import logo_inject       
+import fix_table_fit  
+import epub_tools    
+import epub_caption_apply
 
 def _is_rpc_error(exc: Exception) -> bool:
     """Detect InDesign COM hang / crash / stuck-modal conditions worth restarting for."""
