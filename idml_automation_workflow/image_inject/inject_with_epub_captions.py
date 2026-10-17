@@ -1056,6 +1056,41 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     return info;
                 }
 
+                // Shrink the oversized anchored image that is jamming the flow so a
+                // margin-sized frame can accept it. The text frame is NEVER grown past
+                // the page margins; instead the image is scaled down proportionally
+                // until it fits, so text keeps flowing continuously and nothing is lost.
+                // Returns true if an image near the stuck index was found and shrunk.
+                function shrinkStuckGraphic(story, idx, frac) {
+                    try {
+                        var gs = doc.allGraphics;
+                        var best = null, bestDist = 1e9;
+                        for (var gi = 0; gi < gs.length; gi++) {
+                            try {
+                                var fr = gs[gi].parent;
+                                var anc = fr.parent;
+                                var ps = null;
+                                try { ps = anc.parentStory; } catch (e1) { continue; }
+                                if (!ps || ps.id !== story.id) continue;
+                                var ci = -1;
+                                try { ci = anc.index; } catch (e2) { continue; }
+                                var d = Math.abs(ci - idx);
+                                if (d < bestDist) { bestDist = d; best = fr; }
+                            } catch (eIn) {}
+                        }
+                        if (best && bestDist <= 4) {
+                            var gb = best.geometricBounds;
+                            var h = gb[2] - gb[0], w = gb[3] - gb[1];
+                            if (h > 24 && w > 24) {
+                                best.geometricBounds = [gb[0], gb[1], gb[0] + h * frac, gb[1] + w * frac];
+                                try { best.fit(FitOptions.CONTENT_TO_FRAME); } catch (eF) {}
+                                return true;
+                            }
+                        }
+                    } catch (eTop) {}
+                    return false;
+                }
+
                 for (var i = 0; i < doc.stories.length; i++) {
                     var s = doc.stories[i];
                     s.recompose();
@@ -1092,20 +1127,23 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                             // JAM: the next content unit cannot fit or break on a normal page.
                             var stuck = describeStuck(lastFrame, s);
 
-                            // GENERAL ESCAPE: grow the frame until it accepts the stuck unit.
+                            // ESCAPE WITHOUT GROWING THE FRAME: the frame stays exactly at
+                            // the page margin bounds. The jam is almost always a single
+                            // anchored image taller than the column; shrink that image step
+                            // by step until the margin-sized frame accepts it, so the text
+                            // keeps flowing continuously and nothing is lost. The frame is
+                            // never enlarged beyond the margin guides.
                             var steps = 0;
                             while (lastFrame.characters.length === 0 && lastFrame.overflows && steps < MAX_STEPS) {
-                                var gb = lastFrame.geometricBounds;
-                                var newBottom = gb[2] + HEIGHT_STEP;
-                                var newRight  = Math.min(gb[3] + WIDTH_STEP, pageW - 6);
-                                lastFrame.geometricBounds = [gb[0], gb[1], newBottom, newRight];
+                                var shrank = shrinkStuckGraphic(s, stuck.idx, 0.90);
+                                if (!shrank) break;   // nothing to shrink -> genuine non-image jam
                                 steps++;
                                 s.recompose();
                             }
                             var fh = (lastFrame.geometricBounds[2] - lastFrame.geometricBounds[0]);
 
                             if (lastFrame.characters.length === 0 && lastFrame.overflows) {
-                                // Still unplaceable after max growth: capture the remaining overset text.
+                                // Still unplaceable after shrinking: capture the remaining overset text.
                                 var remaining = "";
                                 try {
                                     var start = lastFrame.previousTextFrame.characters[-1].index + 1;
@@ -1117,7 +1155,7 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                                           "|style=" + stuck.style + "|stuck=[" + stuck.text + "]|REMAINING_TEXT=[" + remaining + "]");
                                 break; // cannot proceed on this thread; stop to avoid an infinite loop
                             } else {
-                                jams.push("FORCED|page~" + doc.pages.length + "|storyIdx=" + stuck.idx +
+                                jams.push("SHRUNK|page~" + doc.pages.length + "|storyIdx=" + stuck.idx +
                                           "|style=" + stuck.style + "|frameHeight=" + fh.toFixed(0) + "pt|content=[" + stuck.text + "]");
                             }
                         }
@@ -1160,8 +1198,8 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                             rf.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                             rf.write(f"{summary_line}\n")
                             rf.write("-" * 60 + "\n")
-                            rf.write("FORCED  = oversized element auto-placed on a grown frame (fix layout by hand).\n")
-                            rf.write("UNRESOLVED = element too large even after growth; remaining text captured below.\n")
+                            rf.write("SHRUNK  = oversized image scaled down to fit the margin-bounded frame (frame never grown).\n")
+                            rf.write("UNRESOLVED = non-image element too large to fit; remaining text captured below.\n")
                             rf.write("-" * 60 + "\n\n")
                             for ln in jam_lines:
                                 rf.write(ln + "\n\n")
