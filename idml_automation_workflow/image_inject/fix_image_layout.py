@@ -167,6 +167,7 @@ def remove_image_table_borders(app):
 
 
 def fix_image_layout(app):
+    # Re-fit any image that overflows its margin box back within the text column.
     js = r'''
     var doc = app.activeDocument;
     var oldRuler = doc.viewPreferences.rulerOrigin;

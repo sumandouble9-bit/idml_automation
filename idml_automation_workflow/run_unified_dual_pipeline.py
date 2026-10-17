@@ -1,8 +1,8 @@
 """
 Unified Dual-Language Pipeline Master Runner (English & Spanish)
 Automatically classifies each IDML by language and executes all pipeline stages:
-- Step 1: Format to Reference (Spanish -> pipeline_es, English -> pipeline_en)
-- Step 2: Document Setup Normalization (5.5x8.5 in, Margins 36/54/36/36 pt, 3mm Bleed)
+- Step 1: Document Setup Normalization (5.5x8.5 in, Margins 36/54/36/36 pt, 3mm Bleed)
+- Step 2: Format to Reference (Spanish -> pipeline_es, English -> pipeline_en)
 - Step 3: EPUB Image & Caption Injection via Adobe InDesign
 - Step 3b: Text Bottom-Gap Fill (Widow/orphan keep-lines relaxed, chapter ends intact)
 - Step 3c: Chapter & Front Matter Layout Spacing (14.5 pt top gap, Title gap)
@@ -35,7 +35,6 @@ from core.typography_postprocessor import postprocess_idml as postprocess_idml_e
 from pages import normalize_document_setup
 import convert_to_pdf
 
-# Dynamic Input directory resolution
 INPUT_DIR = None
 for cand in [
     REPO_DIR / "input_files",
@@ -48,7 +47,6 @@ for cand in [
 if not INPUT_DIR:
     INPUT_DIR = REPO_DIR / "input_files"
 
-# Dynamic EPUB directory resolution
 EPUB_DIR = None
 for cand in [
     REPO_DIR / "epub_input_files",
@@ -62,15 +60,11 @@ if not EPUB_DIR:
 
 FORMAT_DIR = WF_DIR / "Output" / "Formatted"
 NORM_DIR = WF_DIR / "Output" / "page_resize_output"
-# Output lives under the workflow dir (idml_automation_workflow/), same base the
-# image-injection step writes to (INJECT_OUTBASE = WF_DIR/"final_output_files").
-# Keep this on WF_DIR so step 3b and step 4 find the injected files.
 FINAL_OUTPUT_ROOT = WF_DIR / "final_output_files"
 FINAL_IDML_DIR = FINAL_OUTPUT_ROOT / "idml_files"
 FINAL_PDF_DIR = FINAL_OUTPUT_ROOT / "pdf_files"
 RENAMED_OUT_DIR = FINAL_OUTPUT_ROOT / "renamed_output_files"
 
-# Dynamic Reference file resolution
 REFERENCE_FILE = None
 for r_dir in [
     WF_DIR / "Reference",
@@ -125,6 +119,7 @@ def detect_book_language(idml_path: Path) -> str:
 
 
 def get_all_books(only_book=None, target_lang=None, limit=None):
+    # Discover input IDMLs, filter by book/language, and return (path, lang) pairs.
     books = sorted([f for f in INPUT_DIR.glob("*.idml") if not f.name.startswith("~") and not f.name.startswith(".")])
     if only_book:
         clean = only_book.replace(".idml", "")
@@ -154,9 +149,10 @@ def get_all_books(only_book=None, target_lang=None, limit=None):
 
 
 def run_step1_formatting(books):
+    # Formatting pass: apply dual-language typography and structural layout to each book.
     FORMAT_DIR.mkdir(parents=True, exist_ok=True)
     print("\n" + "=" * 70)
-    print("STEP 1: DUAL-LANGUAGE TYPOGRAPHY & STRUCTURAL FORMATTING")
+    print("STEP 2: DUAL-LANGUAGE TYPOGRAPHY & STRUCTURAL FORMATTING")
     print(f"Total books to format: {len(books)}")
     print("=" * 70)
     success, failed = 0, 0
@@ -192,9 +188,10 @@ def run_step1_formatting(books):
 
 
 def run_step2_normalization(books):
+    # Normalization pass: enforce 5.5x8.5 trim size, margins, and bleeds on each book.
     NORM_DIR.mkdir(parents=True, exist_ok=True)
     print("\n" + "=" * 70)
-    print("STEP 2: DOCUMENT SETUP NORMALIZATION (5.5x8.5 in, Margins, Bleeds)")
+    print("STEP 1: DOCUMENT SETUP NORMALIZATION (5.5x8.5 in, Margins, Bleeds)")
     print(f"Total books to normalize: {len(books)}")
     print("=" * 70)
     success, failed = 0, 0
@@ -216,6 +213,7 @@ def run_step2_normalization(books):
 
 
 def run_step3_injection(books, force=False):
+    # Injection pass: inject EPUB images and captions via InDesign (subprocess).
     FINAL_IDML_DIR.mkdir(parents=True, exist_ok=True)
     print("\n" + "=" * 70)
     print("STEP 3: EPUB IMAGE & CAPTION INJECTION (via Adobe InDesign)")
@@ -237,7 +235,6 @@ def run_step3_injection(books, force=False):
             env["LOGO_PATH"] = str(logo_cand)
             break
 
-    # Pass exact list of books to inject
     env["INJECT_ONLY"] = ",".join(f"{b[0].stem}_normalized.idml" for b in books)
     if force:
         env["INJECT_FORCE"] = "1"
@@ -247,6 +244,7 @@ def run_step3_injection(books, force=False):
 
 
 def run_step3d_image_leading(books):
+    # Remove the blank page before body chapters (chapter double-break fix).
     print("\n" + "=" * 70)
     print("STEP 3d: CHAPTER DOUBLE-BREAK FIX (remove blank page before body chapters)")
     print(f"Target directory: {FINAL_IDML_DIR}")
@@ -267,6 +265,7 @@ def run_step3d_image_leading(books):
 
 
 def run_step3b_gap_fill(books):
+    # Reflow body text down to the bottom margin to fill end-of-page gaps.
     print("\n" + "=" * 70)
     print("STEP 3b: TEXT BOTTOM-GAP FILLING (Reflow body lines down to bottom margin)")
     print(f"Input/Output: {FINAL_IDML_DIR}")
@@ -285,6 +284,7 @@ def run_step3b_gap_fill(books):
 
 
 def run_step3c_chapter_top_spacing(books):
+    # Apply chapter and front-matter top spacing to the injected IDMLs.
     print("\n" + "=" * 70)
     print("STEP 3c: CHAPTER & FRONT MATTER LAYOUT SPACING (14.5 pt top gap, Title gap)")
     print(f"Target directory: {FINAL_IDML_DIR}")
@@ -323,6 +323,7 @@ def run_step3c_chapter_top_spacing(books):
 
 
 def run_step4_pdf_export(books, force=False):
+    # Integrity-gate the injected IDMLs, export PDFs, and sync the TOC page numbers.
     FINAL_PDF_DIR.mkdir(parents=True, exist_ok=True)
     print("\n" + "=" * 70)
     print("STEP 4: HIGH-QUALITY PRINT PDF EXPORT (via Adobe InDesign)")
@@ -337,7 +338,6 @@ def run_step4_pdf_export(books, force=False):
     if not target_idmls:
         target_idmls = [f for f in FORMAT_DIR.glob("*_formatted.idml") if any(b_stem in f.name for b_stem in book_stems)]
 
-    # Integrity gate: reject any book that dropped body paragraphs during processing.
     import shutil as _shutil
     _sys_paths = [str(WF_DIR / "test_cases"), str(IMAGE_INJECT_DIR)]
     for _sp in _sys_paths:
@@ -359,21 +359,11 @@ def run_step4_pdf_export(books, force=False):
                 _cmap = {}
         _reasons = []
         if _src.exists() and "_injected" in _doc.name:
-            # Normalize the injected file the SAME way export will (pure-Python
-            # postprocess: caption dedup, verse/word-spacing, heading split) so the
-            # audit reflects the PDF that gets produced, not the stale step-3b file.
-            # (pre-audit in-place postprocess removed: it mutated the injected
-            # deliverable and re-flowed it, dropping images. Step 1 already applied
-            # typography and the PDF step now only exports, so the injected IDML is
-            # audited as-is.)
             try:
                 import check_missing_paragraphs as _cmp
                 _reasons = _cmp.check(str(_src), str(_doc), _cmap)
             except Exception as _e:
                 print(f"  [warn] paragraph check skipped for {_isbn}: {_e}")
-            # Static image-integrity checks (no InDesign needed): any remaining
-            # ###Insert placeholder means an image was not placed (missing image);
-            # a stacked side-by-side pair means the table rebuild failed.
             try:
                 import zipfile as _zip
                 _left = 0
@@ -406,8 +396,6 @@ def run_step4_pdf_export(books, force=False):
                 print(f"  [warn] caption check skipped for {_isbn}: {_e}")
         if _reasons:
             _REJECT_IDML.mkdir(parents=True, exist_ok=True)
-            # Rejected files use the SAME standardized name as the output:
-            # {Sr No.}_{Spanish Print ISBN-13}.idml (PDF is named to match by export).
             try:
                 from core.isbn_manager import get_output_base_name as _gobn
                 _dest = _REJECT_IDML / f"{_gobn(_isbn)}.idml"
@@ -432,8 +420,6 @@ def run_step4_pdf_export(books, force=False):
     else:
         print("No books passed the integrity gate; exporting rejected books only.")
 
-    # Rejected books still get a PDF (in rejected_files/pdf_files) so they can be
-    # reviewed; they are simply kept out of the clean final_output_files set.
     if _rejected:
         _REJECT_PDF = WF_DIR / "final_output_files" / "rejected_files" / "pdf_files"
         _REJECT_PDF.mkdir(parents=True, exist_ok=True)
@@ -447,7 +433,6 @@ def run_step4_pdf_export(books, force=False):
     if not target_idmls:
         return 0
 
-    # Verify and synchronize TOC page numbers with final PDF
     from core.toc_synchronizer import sync_idml_toc_from_pdf
     from core.isbn_manager import get_output_base_name
     print("\nVerifying TOC page synchronization against generated PDFs...")
@@ -468,12 +453,7 @@ def run_step4_pdf_export(books, force=False):
             else:
                 print(f"  [TOC Verified] {idml_f.name} TOC is 100% in sync with {pdf_f.name}.")
 
-        # Generate and save standardized final output files:
-        # {Sr No.}_{Spanish Print ISBN-13}.idml and {Sr No.}_{Spanish Print ISBN-13}.pdf
         if base_out:
-            # Exactly ONE renamed IDML deliverable ({Sr No.}_{Spanish Print ISBN-13}.idml)
-            # in renamed_output_files. The PDF lives only in pdf_files (rejected books:
-            # rejected_files/pdf_files). No idml_files / Output / sequenced copies.
             r_dir = FINAL_OUTPUT_ROOT / "renamed_output_files"
             r_dir.mkdir(parents=True, exist_ok=True)
             _shutil.copy2(idml_f, r_dir / f"{base_out}.idml")
@@ -484,6 +464,7 @@ def run_step4_pdf_export(books, force=False):
 
 
 def main():
+    # Parse CLI args, discover books, and run the selected pipeline steps in order.
     parser = argparse.ArgumentParser(description="Unified Dual-Language Pipeline")
     parser.add_argument("book_pos", nargs="?", default=None, help="Optional positional book identifier")
     parser.add_argument("--book", default=None, help="Process single book by ISBN/name")
@@ -515,7 +496,7 @@ def main():
     if args.step in ["all", "3b"]:
         run_step3b_gap_fill(books)
     if args.step in ["all", "3c"]:
-        pass  # chapter spacing moved to step 1 (before the injection reflow)
+        pass
     if args.step in ["all", "4"]:
         run_step4_pdf_export(books, force=force_run)
 

@@ -30,29 +30,20 @@ import win32com.client
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import epub_tools  # for the EPUB caption map (caption-placement check)
+import epub_tools
 
 EPUB_INPUT_DIR = os.environ.get("EPUB_DIR", "").strip() or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "epub_input_files")
 
-# Where the un-injected source IDMLs live (used by the missing-text check). In the
-# unified workflow the injected files were produced from the FORMATTED folder, so
-# AUDIT_SRC points there; otherwise fall back to the normalized / raw input.
 NORMALIZED_DIR = os.environ.get("AUDIT_SRC", "").strip() or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "page_resize_output")
 RAW_INPUT_DIR  = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "input_files")
 
 _IMG_TOKEN = re.compile(r"^(image|img|fig|figs|figure|plate|illustration)\d+$")
 _EXT_TOKEN = {"jpg", "jpeg", "png", "gif", "tif", "tiff", "bmp", "webp"}
-# Words that are only ever part of a placeholder / figure label, never body prose
-# we care about losing: "###Insert imageNNN.jpg here###" and "Fig. 3" / "Plate 2".
 _PH_TOKEN  = {"insert", "here", "image", "img", "fig", "figs", "figure", "figures",
               "plate", "plates", "illustration", "illustrations"}
-# Keep digits INSIDE a token so "image005" stays one token (and is dropped by the
-# stem/regex above) instead of splitting into "image" + "005" and leaking "image".
-_WORD_RE   = re.compile(r"[A-Za-z][A-Za-z0-9']*")   # hyphen = separator (avoids line-break hyphenation noise)
-MISSING_RUN_LEN = 12   # a run of unique words this long, gone = a real dropped passage
-MISSING_OCC_THRESHOLD = 40  # distinctive word-occurrences lost that count as text loss
-                            # (set above hyphenation/tokenisation noise; real dropped
-                            # passages lose far more than this)
+_WORD_RE   = re.compile(r"[A-Za-z][A-Za-z0-9']*")
+MISSING_RUN_LEN = 12
+MISSING_OCC_THRESHOLD = 40
 
 
 def _source_idml(book):
@@ -81,16 +72,11 @@ def _idml_story_token_lists(idml_path):
                     xml = z.read(n).decode("utf-8", "replace")
                 except Exception:
                     continue
-                # Join <Content> runs on the SAME line directly (no space) so a word
-                # split across runs by a mid-word style change (superscript, italic,
-                # small-caps, etc.) stays whole -- e.g. "atten"+"tion" -> "attention",
-                # not "atten tion" (which would look like a dropped word). A <Br/> is a
-                # real line/paragraph break, so it becomes a space between segments.
                 toks = []
                 for seg in re.split(r"<Br\s*/>", xml):
                     runs = re.findall(r"<Content>(.*?)</Content>", seg, re.S)
                     txt = "".join(runs)
-                    txt = re.sub(r"&#x?[0-9A-Fa-f]+;", " ", txt)     # numeric char entities
+                    txt = re.sub(r"&#x?[0-9A-Fa-f]+;", " ", txt)
                     txt = txt.replace("&amp;", " ").replace("&lt;", " ").replace("&gt;", " ")
                     for w in _WORD_RE.findall(txt):
                         toks.append(w.lower().strip("'"))
@@ -132,10 +118,10 @@ def missing_text_reason(source_idml, injected_idml, caption_map=None):
             for w in _WORD_RE.findall(v):
                 ignore.add(w.lower().strip("'-"))
 
-    def keep(w):   # a distinctive content word worth counting
+    def keep(w):
+        # Keep only meaningful words (>=5 chars, not ignored, not an image token).
         return len(w) >= 5 and w not in ignore and not _IMG_TOKEN.match(w)
 
-    # (1) multiset deficit of distinctive words.
     from collections import Counter
     cs = Counter(w for s in src_stories for w in s if keep(w))
     co = Counter(w for w in out_all if keep(w))
@@ -146,12 +132,10 @@ def missing_text_reason(source_idml, injected_idml, caption_map=None):
             lost_occ += d
             lost_words.append((d, w))
 
-    # (2) runs of consecutive source words entirely absent from the output, each
-    #     with an "anchor" of the present words just before it (used to look up the
-    #     page in the open document, since IDML XML carries no page numbers).
     def is_missing(w):
+        # A source word counts as missing when it is absent from the output tokens.
         return len(w) >= 2 and w not in ignore and not _IMG_TOKEN.match(w) and w not in out_tokens
-    spans = []   # (run_length, anchor_words)
+    spans = []
     for toks in src_stories:
         i, n = 0, len(toks)
         while i < n:
@@ -164,7 +148,7 @@ def missing_text_reason(source_idml, injected_idml, caption_map=None):
                     if not is_missing(toks[k]):
                         anchor.insert(0, toks[k])
                     k -= 1
-                spans.append((j - i, anchor, toks[i:j]))   # length, anchor, missing words
+                spans.append((j - i, anchor, toks[i:j]))
                 i = j
             else:
                 i += 1
@@ -186,7 +170,7 @@ def _find_page(app, anchor):
     gwords = [w for w in gwords if w]
     if len(gwords) < 2:
         return ""
-    grep = "(?i)" + r"\s+".join(gwords)                  # tolerate any spacing/punctuation
+    grep = "(?i)" + r"\s+".join(gwords)
     grep_js = grep.replace("\\", "\\\\").replace('"', '\\"')
     js = ('app.findGrepPreferences = NothingEnum.nothing;'
           'app.findGrepPreferences.findWhat = "%s";'
@@ -215,6 +199,7 @@ def find_missing_pages(app, spans, max_pages=8):
             break
 
     def _k(x):
+        # Sort key: numeric when the value is an integer, else fall back to string order.
         try:
             return (0, int(x))
         except Exception:
@@ -234,7 +219,7 @@ def write_missing_words_report(report_path, app, name, spans, all_words):
              "-" * 60, ""]
     shown = 0
     for length, anchor, words in spans:
-        pg = _find_page(app, anchor)      # page the missing word(s) belong on
+        pg = _find_page(app, anchor)
         lines.append("p.%s : %s" % (pg or "?", " ".join(words)))
         shown += 1
         if shown >= 300:
@@ -250,19 +235,17 @@ def write_missing_words_report(report_path, app, name, spans, all_words):
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
-# EPUB-driven variant: outputs live under epub_image_map_inject/ by default; the
-# unified workflow overrides the output and rejected bases via env vars.
 _HERE             = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR        = os.environ.get("AUDIT_OUTBASE", "").strip() or os.path.join(_HERE, "output_files")
-INJECTED_DIR      = os.path.join(OUTPUT_DIR, "idml_files")    # injected IDMLs (input to audit)
-OUTPUT_PDF_DIR    = os.path.join(OUTPUT_DIR, "pdf_files")     # PDFs of passing documents
+INJECTED_DIR      = os.path.join(OUTPUT_DIR, "idml_files")
+OUTPUT_PDF_DIR    = os.path.join(OUTPUT_DIR, "pdf_files")
 
 REJECTED_DIR      = os.environ.get("AUDIT_REJBASE", "").strip() or os.path.join(_HERE, "rejected_files")
-REJECTED_IDML_DIR = os.path.join(REJECTED_DIR, "idml_files")  # rejected IDMLs
-REJECTED_PDF_DIR  = os.path.join(REJECTED_DIR, "pdf_files")   # PDFs of rejected documents
+REJECTED_IDML_DIR = os.path.join(REJECTED_DIR, "idml_files")
+REJECTED_PDF_DIR  = os.path.join(REJECTED_DIR, "pdf_files")
 
 LOG_PATH          = os.path.join(OUTPUT_DIR, "audit_log.txt")
-SUMMARY_PATH      = os.path.join(OUTPUT_DIR, "books_summary_report.txt")  # per-book table report
+SUMMARY_PATH      = os.path.join(OUTPUT_DIR, "books_summary_report.txt")
 
 JS = 1246973031
 
@@ -712,8 +695,8 @@ def audit_one(app, idml_path, caption_map=None):
 
     problems.join("|") + "" + metricsStr;
     """
-    # Inject the EPUB caption map so the caption-placement check can run.
     def _esc(s):
+        # Escape a string for safe embedding inside the ExtendScript JS literal.
         return (s.replace("\\", "\\\\").replace('"', '\\"')
                  .replace("\r", " ").replace("\n", " "))
     cap_items = ",".join('"%s":"%s"' % (_esc(k), _esc(v)) for k, v in (caption_map or {}).items())
@@ -732,6 +715,7 @@ def audit_one(app, idml_path, caption_map=None):
     return passed, reasons, metrics
 
 def export_pdf(app, pdf_path):
+    # Export the active InDesign document to PDF using the High Quality Print preset.
     js = f"""
     try {{ app.pdfExportPreferences.pageRange = PageRange.ALL_PAGES; }} catch(e) {{}}
     var pdfPreset = app.pdfExportPresets.itemByName("[High Quality Print]");
@@ -741,6 +725,7 @@ def export_pdf(app, pdf_path):
     app.DoScript(js, JS)
 
 def close_doc(app):
+    # Close the active document without saving.
     app.DoScript("app.activeDocument.close(SaveOptions.NO);", JS)
 
 
@@ -779,6 +764,7 @@ def _write_summary_report(path, rows, passed, failed):
     grid = [headers] + [[str(r[k]) for k in keys] for r in rows]
     widths = [max(len(row[i]) for row in grid) for i in range(len(headers))]
     def fmt(row):
+        # Format one report row as padded, pipe-separated columns.
         return " | ".join(row[i].ljust(widths[i]) for i in range(len(row)))
     lines = ["=== Per-Book Summary Report ===",
              "Date: %s" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -794,6 +780,7 @@ def _write_summary_report(path, rows, passed, failed):
 
 
 def main():
+    # Entry point: audit every injected IDML, export PDFs, and route pass/fail to the output or rejected folders.
     for d in (INJECTED_DIR, OUTPUT_PDF_DIR, REJECTED_IDML_DIR, REJECTED_PDF_DIR):
         os.makedirs(d, exist_ok=True)
 
@@ -823,13 +810,12 @@ def main():
 
     passed_count = 0
     failed_count = 0
-    summary_rows = []   # per-book metrics for the table report
+    summary_rows = []
 
     MAX_RETRIES = 3
     for name in idmls:
         idml_path = os.path.join(INJECTED_DIR, name)
         base = os.path.splitext(name)[0]
-        # book base name (drop the "_injected" suffix) to find its EPUB caption map
         book = base[:-9] if base.endswith("_injected") else base
         caption_map = {}
         epub_path = os.path.join(EPUB_INPUT_DIR, book + ".epub")
@@ -838,8 +824,6 @@ def main():
                 caption_map = epub_tools.build_caption_map(epub_path)
             except Exception:
                 caption_map = {}
-        # RESUME: skip books already audited (PDF produced in pass or reject folder)
-        # so a re-run after an InDesign hang continues from where it stopped.
         if (os.path.exists(os.path.join(OUTPUT_PDF_DIR, base + ".pdf"))
                 or os.path.exists(os.path.join(REJECTED_PDF_DIR, base + ".pdf"))):
             print(f"\nSKIP (already audited): {name}")
@@ -854,19 +838,16 @@ def main():
                 _t0 = time.time()
                 passed, reasons, metrics = audit_one(app, idml_path, caption_map)
 
-                # Dropped-text check (source vs injected). Reject if body text was
-                # lost during injection/caption handling (words missing from output).
                 try:
                     mt = missing_text_reason(_source_idml(book), idml_path, caption_map)
                     if mt:
                         msg, spans, all_words = mt
                         try:
-                            pages = find_missing_pages(app, spans)  # doc still open
+                            pages = find_missing_pages(app, spans)
                             if pages:
                                 msg += " pages=[%s]" % ",".join(pages)
                         except Exception:
                             pass
-                        # Detailed per-book report: exact missing words + page numbers.
                         try:
                             rep = os.path.join(REJECTED_IDML_DIR, base + ".missing_words.txt")
                             write_missing_words_report(rep, app, name, spans, all_words)
@@ -878,7 +859,6 @@ def main():
                 except Exception as _emt:
                     print(f"  [warn] missing-text check skipped: {_emt}")
 
-                # Every document is exported to PDF; pass/fail only decides WHERE.
                 if passed:
                     pdf_path = os.path.join(OUTPUT_PDF_DIR, base + ".pdf")
                     print(f"  PASS -> PDF: {pdf_path}")
@@ -891,10 +871,10 @@ def main():
                     pdf_path = os.path.join(REJECTED_PDF_DIR, base + ".pdf")
                     print(f"  FAIL: {reasons}")
                     print(f"  FAIL -> PDF: {pdf_path}")
-                    export_pdf(app, pdf_path)          # still produce a PDF for rejected docs
+                    export_pdf(app, pdf_path)
                     close_doc(app)
                     dest = os.path.join(REJECTED_IDML_DIR, name)
-                    shutil.move(idml_path, dest)        # move the IDML into rejected_files/idml_files
+                    shutil.move(idml_path, dest)
                     with open(dest + ".audit.txt", "w", encoding="utf-8") as f:
                         f.write("Audit failed for {}\n".format(name))
                         for r in reasons:
@@ -902,10 +882,9 @@ def main():
                     log.append(f"{name}: FAIL -> rejected_files/  ({'; '.join(reasons)})")
                     _record_summary(summary_rows, book, metrics, "REJECT", reasons, time.time() - _t0)
                     failed_count += 1
-                break  # this document is done
+                break
 
             except Exception as e:
-                # InDesign hang / crash / stuck modal: restart and retry the document.
                 if _is_rpc_error(e) and attempt < MAX_RETRIES:
                     print(f"  [!] InDesign hang/modal on {name} "
                           f"(attempt {attempt}/{MAX_RETRIES}): {e}", flush=True)
@@ -917,7 +896,6 @@ def main():
                         log.append(f"{name}: RESTART_FAILED {ridx}")
                         failed_count += 1
                         break
-                    # Drop any partial PDF (either location) before retrying.
                     for _pp in (os.path.join(OUTPUT_PDF_DIR, base + ".pdf"),
                                 os.path.join(REJECTED_PDF_DIR, base + ".pdf")):
                         try:

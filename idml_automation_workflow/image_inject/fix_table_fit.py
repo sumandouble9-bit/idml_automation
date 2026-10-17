@@ -6,11 +6,11 @@ from datetime import datetime
 
 import win32com.client
 
-JS = 1246973031  # ScriptLanguage.JAVASCRIPT
+JS = 1246973031
 
 
-#  InDesign crash / hang resilience (mirrors the pipeline's own helpers).      #
 def _is_rpc_error(exc: Exception) -> bool:
+    # True if the exception is an InDesign COM hang/crash/modal condition worth restarting for.
     s = str(exc).lower()
     return (
         "remote procedure call" in s
@@ -24,6 +24,7 @@ def _is_rpc_error(exc: Exception) -> bool:
 
 
 def restart_indesign(wait_seconds: int = 6):
+    # Force-kill InDesign, relaunch it, and return a fresh COM Application object.
     print("  [restart] Killing InDesign.exe ...", flush=True)
     for proc in ("InDesign.exe", "Adobe Crash Processor.exe"):
         try:
@@ -49,15 +50,8 @@ def restart_indesign(wait_seconds: int = 6):
     raise RuntimeError("Could not restart InDesign after multiple attempts")
 
 
-
-#  Pass 0 — break un-splittable single-cell text tables (poems / boxed song   
-#  lines). A 1x1, text-only table that is TALLER than the page's text area      
-#  cannot fit on a page and cannot split at row boundaries (it has one row), so 
-#  the injection force-grows its frame past the bottom margin. Converting it to 
-#  ordinary flowing text lets the lines break across pages within the margins.  
-#  Only text-only single-cell tables taller than the text area are touched;     
-#  real data tables and single-cell boxes holding an image are left alone.      
 def _break_poem_tables(app):
+    # Split poem/verse tables so they can break across pages instead of overflowing.
     js = r'''
     var doc = app.activeDocument;
     var pageH = doc.documentPreferences.pageHeight;
@@ -103,9 +97,8 @@ def _break_poem_tables(app):
     '''
     return app.DoScript(js, JS)
 
-#  Pass 1 — make every cell's text visible (fix red dots) and make body rows   
-#  breakable. NO font sizes are changed. Per-table no-regression guard.        
 def _fix_tables_and_breakable(app):
+    # Resize table columns/insets to fit the text and mark rows breakable across pages.
     js = r'''
     var doc = app.activeDocument;
     var oldRuler = doc.viewPreferences.rulerOrigin;
@@ -291,10 +284,8 @@ def _fix_tables_and_breakable(app):
     '''
     return app.DoScript(js, JS)
 
-#  Pass 2 — keep tables under the frame: reset margin-overgrown frames and let
-#  the table split onto the next page. GUARDED so un-splittable blocks keep  
-#  their force-grow and the page count can never run away.                     
 def _fix_vertical(app):
+    # Reflow tables vertically so a tall table splits across pages rather than growing the frame.
     js = r'''
     var doc = app.activeDocument;
     var oldRuler = doc.viewPreferences.rulerOrigin;
@@ -428,12 +419,8 @@ def _fix_vertical(app):
     '''
     return app.DoScript(js, JS)
 
-#  Pass 0.5 — stop justified cell text from spreading words/letters apart and    
-#  let rows auto-grow. Switches any JUSTIFIED cell to left-aligned (no extra      
-#  space between words), turns hyphenation OFF for now (so the width pass below    
-#  widens columns to fit FULL words instead of breaking them), and lets rows       
-#  grow so wrapped text is fully visible. No font size is ever changed. 
 def _align_autogrow_cells(app):
+    # Left-align and auto-grow table cells so their text stays visible.
     js = r'''
     var doc = app.activeDocument;
     var J = Justification;
@@ -478,12 +465,8 @@ def _align_autogrow_cells(app):
     '''
     return app.DoScript(js, JS)
 
-#  Pass 2.5 — LAST-RESORT hyphenation. After the width pass has widened columns   
-#  to fit full words, a few cells may still be overset (the table is simply too    
-#  narrow for that word at this font). Turn hyphenation on for ONLY those still-    
-#  overset cells so the word breaks with a hyphen and becomes visible. Cells that   
-#  already fit keep their full, un-hyphenated words. No font size change.           
 def _hyphenate_overset_cells(app):
+    # Enable hyphenation in overset cells so long words break and the text fits.
     js = r'''
     var doc = app.activeDocument;
     var fixed = 0;
@@ -516,12 +499,8 @@ def _hyphenate_overset_cells(app):
     '''
     return app.DoScript(js, JS)
 
-#  Pass 3 — centre a narrow, left-aligned table that has empty space beside it. 
-#  A table whose columns sum to less than the text column is shifted right by   
-#  half the leftover (via the table paragraph's left indent) so it sits centred  
-#  under the text frame. No width, inset or font change -- only the position.    
-#  Image tables and full-width / over-wide tables are left alone.                
 def _center_narrow_tables(app):
+    # Center narrow left-aligned tables within the text column.
     js = r'''
     var doc = app.activeDocument;
     var oldRuler = doc.viewPreferences.rulerOrigin;
@@ -1023,26 +1002,24 @@ def fix_tables_in_doc(app):
     the text frame being grown (guarded so the page count can never run away), which
     is what keeps the body text flowing normally. Returns a summary.
     """
-    rS = enforce_text_size(app, 9.65)         # normal body + table text fixed at 9.65pt
-    rE = _collapse_empty_rows(app)            # empty spacer rows -> small constant height (skips 1x1)
-    rC = _compact_cell_content(app)           # trim blank lines, top-align, compact rows
-    # List/poem splitting is handled by _break_poem_tables (convert an overset
-    # single cell to flowing text, which splits across pages losslessly). The
-    # DOM row-rebuild split was destructive, so it is intentionally not run.
+    rS = enforce_text_size(app, 9.65)
+    rE = _collapse_empty_rows(app)
+    rC = _compact_cell_content(app)
     rSp = "LIST_TABLES_SPLIT=via_text_flow"
     r0 = _break_poem_tables(app)
-    rA = _align_autogrow_cells(app)           # hyphenate long words + de-justify (no spreading)
-    rL = _left_align_table_cells(app)         # all text cells start at the left border
-    r1 = _fix_tables_and_breakable(app)       # widen overset columns, keep table in the column
-    rI = _fit_image_tables_to_margin(app)     # shrink image tables to fit indented width (no indent change)
+    rA = _align_autogrow_cells(app)
+    rL = _left_align_table_cells(app)
+    r1 = _fix_tables_and_breakable(app)
+    rI = _fit_image_tables_to_margin(app)
     r2 = _center_narrow_tables(app)
-    rB = _remove_all_table_borders(app)       # disable all table cell borders
+    rB = _remove_all_table_borders(app)
     r3 = _fix_vertical(app)
-    rF = _flow_overset_tail(app)               # add pages so expanded poem/list text is not truncated
+    rF = _flow_overset_tail(app)
     return "%s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s" % (rS, rE, rC, rSp, r0, rA, rL, r1, r2, rB, r3, rF, rI)
 
 
 def _open_doc(app, idml_path):
+    # Open an IDML in InDesign with user interaction and redraw disabled.
     js = f'''
     app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;
     app.scriptPreferences.enableRedraw = false;
@@ -1055,6 +1032,7 @@ def _open_doc(app, idml_path):
 
 
 def _export_and_close(app, out_path):
+    # Export the active document back to IDML and close it without saving.
     js = f'''
     var outFile = new File("{out_path.replace(chr(92), '/')}");
     app.activeDocument.exportFile(ExportFormat.INDESIGN_MARKUP, outFile);
@@ -1066,6 +1044,7 @@ def _export_and_close(app, out_path):
 
 
 def _collect_targets(target):
+    # Return the list of target IDML paths from a file or directory argument.
     if os.path.isfile(target) and target.lower().endswith(".idml"):
         return [target]
     if os.path.isdir(target):
@@ -1075,6 +1054,7 @@ def _collect_targets(target):
 
 
 def main():
+    # Standalone entry point: run the table-fit passes over a file or folder of IDMLs.
     _HERE = os.path.dirname(os.path.abspath(__file__))
     default_in  = os.path.join(_HERE, "output_files", "idml_files")
     out_dir     = os.path.join(_HERE, "output_files", "table_output_file")

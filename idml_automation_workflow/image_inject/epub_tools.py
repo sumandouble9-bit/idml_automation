@@ -18,8 +18,9 @@ import zipfile
 
 
 def _strip_tags(s: str) -> str:
-    s = re.sub(r"(?is)<[^>]+>", " ", s)      # drop tags
-    s = html.unescape(s)                     # &amp; -> &, &#8212; -> em dash, etc.
+    # Strip HTML tags and unescape entities, returning plain text.
+    s = re.sub(r"(?is)<[^>]+>", " ", s)
+    s = html.unescape(s)
     s = s.replace("\u00a0", " ")
     s = re.sub(r"\s+", " ", s).strip()
     return s
@@ -39,7 +40,6 @@ def extract_epub(epub_path: str, images_out_dir: str):
     with zipfile.ZipFile(epub_path, "r") as z:
         names = z.namelist()
 
-        # 1) Extract every image file (by extension), flattened to basename.
         img_exts = (".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".bmp", ".webp")
         for n in names:
             if n.lower().endswith(img_exts):
@@ -52,7 +52,6 @@ def extract_epub(epub_path: str, images_out_dir: str):
                     out.write(data)
                 image_count += 1
 
-        # 2) Parse XHTML/HTML for <figure> blocks -> image basename : caption.
         doc_names = [n for n in names if n.lower().endswith((".xhtml", ".html", ".htm"))]
         for n in doc_names:
             try:
@@ -96,7 +95,6 @@ def build_caption_map(epub_path: str):
 
 
 if __name__ == "__main__":
-    # quick self-test
     import sys
     ep = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "epub_input_files", "18239.epub")
     out = os.path.join(os.path.dirname(__file__), "extracted_images",

@@ -18,11 +18,12 @@ JS = 1246973031
 
 
 def apply_captions(app, caption_map):
+    # Place each image's EPUB caption below the image and remove the original caption.
     if not caption_map:
         return "0"
 
-    # Build a JS object literal { "imageNNN.jpg": "caption", ... }.
     def esc(s):
+        # Escape a string for safe embedding inside the ExtendScript JS literal.
         return (s.replace("\\", "\\\\").replace('"', '\\"')
                  .replace("\r", " ").replace("\n", " "))
     items = ",".join('"%s":"%s"' % (esc(k), esc(v)) for k, v in caption_map.items())
@@ -185,6 +186,7 @@ def cleanup_caption_artifacts(app, caption_map):
         return "0"
 
     def esc(s):
+        # Escape a string for safe embedding inside the ExtendScript JS literal.
         return (s.replace("\\", "\\\\").replace('"', '\\"')
                  .replace("\r", " ").replace("\n", " "))
     items = ",".join('"%s":"%s"' % (esc(k), esc(v)) for k, v in caption_map.items())
@@ -297,6 +299,7 @@ def normalize_captions_below_images(app, caption_map):
         return "0"
 
     def esc(s):
+        # Escape a string for safe embedding inside the ExtendScript JS literal.
         return (s.replace("\\", "\\\\").replace('"', '\\"')
                  .replace("\r", " ").replace("\n", " "))
     items = ",".join('"%s":"%s"' % (esc(k), esc(v)) for k, v in caption_map.items())
@@ -453,6 +456,7 @@ def ensure_split_figure_captions(app, caption_map):
         return "0"
 
     def esc(s):
+        # Escape a string for safe embedding inside the ExtendScript JS literal.
         return (s.replace("\\", "\\\\").replace('"', '\\"')
                  .replace("\r", " ").replace("\n", " "))
     items = ",".join('"%s":"%s"' % (esc(k), esc(v)) for k, v in caption_map.items())

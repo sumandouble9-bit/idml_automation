@@ -18,6 +18,7 @@ JS = 1246973031
 
 
 def inject_logo(app, logo_path):
+    # Relink every logo link, fit the logo inside its original frame (never moved/resized), and clear the border.
     js = r'''
     var doc = app.activeDocument;
     var LOGO = new File("%LOGO%");

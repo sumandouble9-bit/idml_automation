@@ -7,7 +7,6 @@ import re
 import shutil
 from datetime import datetime
 
-# Make same-folder modules importable regardless of the working directory.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fix_image_layout    
 import logo_inject       
@@ -24,9 +23,6 @@ def _is_rpc_error(exc: Exception) -> bool:
         or "-2147023170" in s
         or "-2147023174" in s
         or "call was rejected" in s
-        # A modal dialog/alert can appear mid-batch (font/plugin/recovery prompts)
-        # even under NEVER_INTERACT; once up it blocks every COM call. Restarting
-        # InDesign clears it so the affected document can be retried cleanly.
         or "modal dialog or alert is active" in s
         or "30486" in s
     )
@@ -141,6 +137,7 @@ def source_sidebyside_pairs(source_idml):
 
 
 def set_body_image_inline_leading(app):
+    # Reserve each body image's full height inline (leading = image height) so a tall image never overlaps the text.
     js = r"""
     var d = app.activeDocument;
     var n = 0;
@@ -171,16 +168,10 @@ def set_body_image_inline_leading(app):
     "INLINE_LEADING=" + n;
     """
     return app.DoScript(js, 1246973031)
-# Reserves each body image's full height in the column flow: the image is set
-# INLINE on its own paragraph and that paragraph's leading is set to the image
-# height, so the line box is as tall as the image. Text above and below then
-# makes room for it and can never render behind it. Replaces ABOVE_LINE, which
-# drew a tall image UPWARD from a 12pt line and shot it off the page top onto the
-# body text. Must run BEFORE the overset reflow so pagination accounts for the
-# taller image lines. Skips the logo and table-cell images.
 
 
 def force_body_images_inline(app):
+    # Force every body image to inline anchoring, centered (disabled pass, kept for reference).
     js = r"""
     var d = app.activeDocument;
     var n = 0;
@@ -396,6 +387,7 @@ def relocate_figure_labels(app):
     return app.DoScript(js, 1246973031)
 
 def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, output_idml_dir=None, logo_path=None, target_files=None):
+    # Main batch driver: open each IDML, inject EPUB images/captions, reflow, and export the injected IDML.
     _HERE = os.path.dirname(os.path.abspath(__file__))
     _WF = os.path.dirname(_HERE)
     _REPO = os.path.dirname(_WF)
@@ -468,7 +460,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
         idml_files = [os.path.basename(f) for f in target_files]
     else:
         idml_files = [f for f in os.listdir(input_dir) if f.lower().endswith('.idml')]
-    # Optional single/subset filter for testing (INJECT_ONLY="a.idml,b.idml").
     _only = os.environ.get("INJECT_ONLY", "").strip()
     if _only:
         wanted = {w.strip().lower() for w in _only.split(",") if w.strip()}
@@ -496,9 +487,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                 idml_path = os.path.join(input_dir, filename)
                 base_name = os.path.splitext(filename)[0]
 
-                # RESUME: if this book was already injected (e.g. a previous run was
-                # killed after an InDesign hang), skip it so we continue from where
-                # we stopped instead of redoing everything.
                 clean_base = base_name.replace("_normalized", "").replace("_formatted", "")
                 _already = os.path.join(output_idml_dir, f"{clean_base}_injected.idml")
                 if not os.path.exists(_already):
@@ -510,7 +498,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                         log_data.append(f"SKIP already injected: {filename}")
                         break
 
-                # Extract this book's images AND caption map straight from its EPUB.
                 current_image_folder = os.path.join(base_image_dir, clean_base)
                 caption_map = {}
                 epub_path = os.path.join(epub_input_dir, clean_base + ".epub")
@@ -561,12 +548,7 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                 print(f"Input pages: {input_pages}")
                 log_data.append(f"Input pages: {input_pages}")
 
-                # NOTE: the logo is handled entirely by the dedicated logo_inject
-                # pass at the very end (relink + size + position), isolated from the
-                # body-image injection below.
 
-                # Split packed multi-image paragraphs so images land in document
-                # order (097 before 098) with one caption each.
                 try:
                     _src_orig = os.path.join(_REPO, "input_files", f"{clean_base}.idml")
                     _keep = source_sidebyside_pairs(_src_orig) if os.path.exists(_src_orig) else set()
@@ -621,7 +603,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
 
                         if os.path.exists(img_path):
                             final_img_path = prepare_image(img_path, doc_temp_dir)
-                            # JS-string-safe literal for substring matching (indexOf), not a regex.
                             js_name = img_name.replace('\\', '\\\\').replace('"', '\\"')
                             clean_img_path = final_img_path.replace(chr(92), "/")
 
@@ -855,10 +836,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     print("No image placeholders found in this document.")
                     log_data.append("Images: 0 placeholders found.")
 
-                # EPUB caption pass: put each image's EPUB <figcaption> BELOW the
-                # image and remove the original caption (above / inline / interleaved)
-                # so nothing is duplicated. Runs before the reflow so pagination
-                # accounts for the caption paragraphs.
                 try:
                     caps_applied = epub_caption_apply.apply_captions(app, caption_map)
                     print(f"EPUB captions placed below images: {caps_applied}")
@@ -867,8 +844,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     print(f"EPUB caption pass skipped: {e_cap}")
                     log_data.append(f"EPUB caption pass skipped: {e_cap}")
 
-                # Separate pass: give the FIRST half of a split figure its caption
-                # too (when it is directly followed by the second image).
                 try:
                     caps_split = epub_caption_apply.ensure_split_figure_captions(app, caption_map)
                     print(f"Split-figure captions inserted: {caps_split}")
@@ -877,8 +852,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     print(f"Split-figure caption pass skipped: {e_csf}")
                     log_data.append(f"Split-figure caption pass skipped: {e_csf}")
 
-                # Separate cleanup pass: remove any duplicate caption and fix a
-                # caption that got fused onto the following body paragraph.
                 try:
                     caps_clean = epub_caption_apply.cleanup_caption_artifacts(app, caption_map)
                     print(f"Caption artifacts cleaned: {caps_clean}")
@@ -887,16 +860,7 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     print(f"Caption cleanup pass skipped: {e_ccl}")
                     log_data.append(f"Caption cleanup pass skipped: {e_ccl}")
 
-                # DISABLED: normalize_captions_below_images ran AFTER cleanup_caption_artifacts,
-                # so any duplicate caption it re-inserted on a split figure (two images
-                # sharing one caption) was never deduped and the book was rejected with
-                # CAPTION_DUP. The proven reference runs only apply_captions +
-                # ensure_split_figure_captions + cleanup_caption_artifacts, so this
-                # extra normalise pass is intentionally not run.
 
-                # Reserve each body image's full height in the flow (INLINE + leading =
-                # image height) so a tall image never overlaps the text above it. Runs
-                # before the overset reflow so pagination accounts for the taller lines.
                 try:
                     inl = set_body_image_inline_leading(app)
                     print(f"Body image inline-leading set: {inl}")
@@ -905,13 +869,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     print(f"Inline-leading pass skipped: {e_inl}")
                     log_data.append(f"Inline-leading pass skipped: {e_inl}")
 
-                # Convert non-breaking spaces to regular spaces BEFORE reflow.
-                # After the page-resize normalization narrowed the columns, any line
-                # joined entirely by non-breaking spaces (~S / ~s) that is wider than
-                # the column becomes unbreakable: InDesign cannot place a single
-                # character, a freshly added frame accepts 0 characters, and the
-                # reflow loop's safeguard then abandons ALL remaining text as overset.
-                # Normalizing them to breakable spaces lets the text reflow correctly.
                 js_fix_nbsp = """
                 var doc = app.activeDocument;
                 app.findGrepPreferences = NothingEnum.nothing;
@@ -931,10 +888,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     print(f"Non-breaking space normalization skipped: {e_nbsp}")
                     log_data.append(f"NBSP normalization skipped: {e_nbsp}")
 
-                # Convert single-cell poem/list tables to flowing text BEFORE the
-                # reflow so they can break across pages (a 1-cell table is one
-                # unbreakable row that would otherwise be forced onto one page and
-                # truncate itself and the text after it).
                 try:
                     sc_conv = fix_table_fit.convert_single_cell_tables(app)
                     print(f"Single-cell tables -> text (pre-reflow): {sc_conv}")
@@ -943,32 +896,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     print(f"Pre-reflow single-cell conversion skipped: {e_sc}")
                     log_data.append(f"Pre-reflow single-cell conversion skipped: {e_sc}")
 
-                # Overset reflow loop: dynamic page addition + cause-agnostic jam escape.
-                #
-                # PROBLEM this solves generally (works for ANY file, not just known cases):
-                # A freshly added, full-size text frame can accept 0 characters yet still
-                # overflow. That happens whenever the next content unit cannot fit a page
-                # AND cannot break: a table row taller than the page, an anchored image
-                # taller than the page, an unbreakable line wider than the column, a huge
-                # word, etc. The old logic simply `break`-ed on that condition, silently
-                # abandoning ALL remaining text as overset.
-                #
-                # NEW LOGIC (no per-cause special handling):
-                #   1. Add pages while the story overflows (as before).
-                #   2. If a fresh frame accepts 0 chars but overflows (a "jam"), GROW that
-                #      frame (height first, then a little width) until it accepts the stuck
-                #      element. This forces the oversized element onto the page so the flow
-                #      continues and NO text is lost. The oversized frame is intentionally
-                #      left larger than the page so it is easy to spot and fix by hand.
-                #   3. Every jam is RECORDED (page, style, text snippet, forced size). If an
-                #      element is so large it cannot be placed even after max growth, it is
-                #      recorded as UNRESOLVED together with the remaining overset text.
-                #   4. The full report is written to <name>_overset_report.txt so problems
-                #      can be fixed step by step.
-                # Enable hyphenation on the body text too (same hyphen rule as the
-                # tables): long words break with a hyphen, which also tightens
-                # justified lines so no extra space is added between words. Done
-                # BEFORE the reflow so pagination accounts for it.
                 js_hyphenate_body = r"""
                 var doc = app.activeDocument;
                 var styles = doc.allParagraphStyles;
@@ -1172,12 +1099,10 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                 """
                 try:
                     reflow_report = app.DoScript(js_resolve_overset, 1246973031)
-                    # First line is the summary; the rest are per-jam report lines.
                     report_lines = str(reflow_report).split("\n")
                     summary_line = report_lines[0] if report_lines else ""
                     jam_lines = [ln for ln in report_lines[1:] if ln.strip()]
 
-                    # Parse summary for logging/printing.
                     added_str = "0"
                     overset_left = "0"
                     try:
@@ -1190,7 +1115,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     print(f"Overset reflow: added {added_str} page(s) | remaining overset frames: {overset_left} | issues flagged: {len(jam_lines)}")
                     log_data.append(f"Overset reflow: added {added_str} page(s), remaining overset frames {overset_left}, issues flagged {len(jam_lines)}")
 
-                    # Write a per-document report so each problem can be fixed step by step.
                     if jam_lines:
                         report_path = os.path.join(output_dir, f"{base_name}_overset_report.txt")
                         with open(report_path, "w", encoding="utf-8") as rf:
@@ -1212,12 +1136,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     print(f"Error resolving overset: {e_over_outer}")
                     log_data.append(f"Error resolving overset: {e_over_outer}")
 
-                # Table fix — AFTER the main reflow so table cells are composed and
-                # their overset state is accurate. Makes each table's text visible by
-                # auto-resizing columns/insets only (no font change, no word spacing),
-                # keeps tables within the text column, centres narrow left-aligned
-                # tables, and re-flows vertically so a tall table SPLITS across pages
-                # (instead of growing the text frame) -- keeping the body text flowing.
                 try:
                     tbl_res = fix_table_fit.fix_tables_in_doc(app)
                     print(f"Tables fixed: {tbl_res}")
@@ -1277,9 +1195,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                 print(summary)
                 log_data.append(summary)
 
-                # Standalone pass: fix any images that overflow the margin box
-                # (side-by-side above-line groups, or oversized images). Runs after
-                # pagination is final and before export; does not touch well-placed images.
                 try:
                     imgs_fixed = fix_image_layout.fix_image_layout(app)
                     print(f"Image layout fixed: {imgs_fixed} image(s) re-fitted within margins")
@@ -1288,9 +1203,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     print(f"Image layout pass skipped: {e_fil}")
                     log_data.append(f"Image layout pass skipped: {e_fil}")
 
-                # Separate pass: centre images anchored inside table cells within
-                # their column (removes the uniform rightward offset that pushes a
-                # side-by-side figure's outer image past the page margin).
                 try:
                     centered = fix_image_layout.center_images_in_cells(app)
                     print(f"Cell images centered: {centered}")
@@ -1299,8 +1211,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     print(f"Cell-centering pass skipped: {e_cic}")
                     log_data.append(f"Cell-centering pass skipped: {e_cic}")
 
-                # Separate pass: remove the black border (cell strokes) from figure
-                # tables that hold side-by-side images, and any image-frame stroke.
                 try:
                     borders_cleared = fix_image_layout.remove_image_table_borders(app)
                     print(f"Image table borders cleared: {borders_cleared}")
@@ -1309,9 +1219,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     print(f"Border removal pass skipped: {e_brd}")
                     log_data.append(f"Border removal pass skipped: {e_brd}")
 
-                # Dedicated, isolated logo pass: relink + size + centre + place the
-                # logo ABOVE the bottom margin, fully visible. Touches ONLY the logo;
-                # never affects any body image's injection or position.
                 try:
                     logo_done = logo_inject.inject_logo(app, logo_path)
                     print(f"Logo relinked + fitted in original frame: {logo_done}")
@@ -1320,7 +1227,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     print(f"Logo injection pass skipped: {e_logo}")
                     log_data.append(f"Logo injection pass skipped: {e_logo}")
 
-                # Dynamic TOC Synchronization with actual layout pages
                 try:
                     scripts_core_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Scripts")
                     if scripts_core_dir not in sys.path:
@@ -1333,11 +1239,6 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     print(f"TOC sync pass skipped: {e_toc}")
                     log_data.append(f"TOC sync pass skipped: {e_toc}")
 
-                # DISABLED: force_body_images_inline flipped every single body image
-                # from the proven ABOVE_LINE block anchoring to INLINE_POSITION on the
-                # text baseline, so a tall image overlapped the lines above it. The
-                # proven reference keeps body images ABOVE_LINE (no overlap), so this
-                # pass is intentionally not run.
 
                 print("Exporting processed IDML to output folder...")
                 if locals().get("fail_count", 0) > 0:

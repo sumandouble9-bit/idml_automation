@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Shared overset resolver (one place, one routine).
 Adds linked frames/pages while any story overflows; grows a frame only when a
 single unit will not fit. Call it as the final layout act to guarantee no overset.
@@ -6,7 +5,6 @@ single unit will not fit. Call it as the final layout act to guarantee no overse
 
 JS = 1246973031
 
-# Byte-for-byte identical to the injector's working inline resolver.
 JS_RESOLVE_OVERSET = """
                 var doc = app.activeDocument;
                 var oldRuler = doc.viewPreferences.rulerOrigin;
