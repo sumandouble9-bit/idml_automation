@@ -1,0 +1,25 @@
+1. Add book size, page marge, bleed margin
+2. Preserve formatting and positioning of the title page as per the original/reference IDML.(like formating, font size, font style etc..)
+3. Preserve formatting and positioning of the copyright page.(like formating, font size, font style etc..)-->> skip shecking isbn number
+4. Preserve formatting and positioning of the TOC page.
+5. Preserve formatting and positioning of the About the Author page.
+6. Fix overset/unflowed text so the complete book content is placed inside visible pages.
+7. check the correct font family and font size to body text and other required text elements.
+8. Restore bold formatting wherever bold character styles are applied.
+9. Restore italic formatting wherever italic character styles are applied.
+10. Check the title-page font size and font style according to the reference layout.
+11. Separate chapter number and chapter title when they appear on the same run-on line.
+12. Preserve correct H1, H2, H3 and other heading styles and Text position (center, left, right).
+13. "Replace image placeholder text such as ###Insert image001.jpg here### with the actual
+linked images."
+14. Preserve table structure and styling according to the reference IDML.
+15. check block quote/blockleft alignment and paragraph styling.
+16. check list alignment and list paragraph styles.(eg. number list, bullet point list, alphabet list)
+17. Restore superscript formatting for footnote/reference markers.
+18. Restore subscript formatting wherever used.
+19. check Ensure the correct Bold/Italic/Underline/All Caps character styles actually apply their
+intended formatting."
+
+20. Verify index content formatting and spacing.
+21. Verify footnote content formatting and placement.
+22. Fix bottom alignment/baseline positioning on pages containing tables.

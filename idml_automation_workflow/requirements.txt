@@ -1,0 +1,4 @@
+# Required Python dependencies for IDML Automation Workflow
+pywin32>=306
+pillow>=10.0.0
+fonttools>=4.40.0

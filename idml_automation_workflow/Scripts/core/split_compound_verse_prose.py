@@ -1,0 +1,195 @@
+"""
+Dedicated Standalone Module: Split Compound Verse & Prose
+=========================================================
+Safely isolates short verse / quote paragraphs (holding soft breaks \u2028)
+from ordinary running body prose when both are bundled inside a single
+multi-paragraph ParagraphStyleRange.
+
+Problem Solved:
+---------------
+In some IDML manuscripts (e.g. converted from Word/EPUB), an entire chapter
+containing 20+ paragraphs is grouped inside a single <ParagraphStyleRange>.
+If the opening epigraph or Bible quotation contains soft line breaks (\u2028),
+the postprocessor flags the entire ParagraphStyleRange as a soft-break block
+and stamps Justification="LeftAlign" across the ENTIRE chapter, causing all
+regular body paragraphs to render ragged-right instead of justified.
+
+Safety & Multi-Book Protection:
+-------------------------------
+1. Only acts on compound ParagraphStyleRanges that contain MULTIPLE hard
+   paragraph breaks (<Br /> count > 1) AND contain a soft break (\u2028).
+2. Pure verse blocks (where every line is a short poem line, or single-stanza
+   verse with Br <= 1) are untouched and retain their LeftAlign formatting.
+3. Paragraphs containing soft line breaks (\u2028) strictly retain LeftAlign,
+   guaranteeing that short verse lines are never stretched and no loose
+   word-spacing issues can ever occur.
+4. Only the subsequent normal prose paragraphs (without \u2028) receive
+   Justification="LeftJustified" with standard body indentation.
+5. All other books with pre-split or pure verse paragraphs are 100% unaffected.
+"""
+
+import copy
+import re
+import zipfile
+from pathlib import Path
+import xml.etree.ElementTree as ET
+
+
+def _lname(tag: str) -> str:
+    """Strips XML namespace, returning the local tag name."""
+    return tag.rsplit("}", 1)[-1]
+
+
+_SKIP_STYLES = (
+    "chapter", "head", "toc", "title", "author", "caption",
+    "verso", "copyright", "index", "folio", "running",
+    "doublenine", "about_the_auth"
+)
+
+
+def _split_single_psr_at_br(psr: ET.Element):
+    """Splits one compound ParagraphStyleRange at <Br /> boundaries into
+    individual ParagraphStyleRange elements (one per paragraph)."""
+    paragraphs = []
+    current_csrs = []
+
+    for csr in list(psr):
+        if _lname(csr.tag) != "CharacterStyleRange":
+            current_csrs.append(csr)
+            continue
+
+        sub_items = []
+        for child in list(csr):
+            if _lname(child.tag) == "Br":
+                new_csr = copy.deepcopy(csr)
+                for c in list(new_csr):
+                    new_csr.remove(c)
+                for item in sub_items:
+                    new_csr.append(item)
+                new_csr.append(child)
+                current_csrs.append(new_csr)
+                paragraphs.append(current_csrs)
+                current_csrs = []
+                sub_items = []
+            else:
+                sub_items.append(child)
+
+        if sub_items:
+            new_csr = copy.deepcopy(csr)
+            for c in list(new_csr):
+                new_csr.remove(c)
+            for item in sub_items:
+                new_csr.append(item)
+            current_csrs.append(new_csr)
+
+    if current_csrs:
+        paragraphs.append(current_csrs)
+
+    out_psrs = []
+    orig_attrib = dict(psr.attrib)
+
+    for p_csrs in paragraphs:
+        p_txt = "".join(
+            c.text or ""
+            for node in p_csrs
+            for c in node.iter()
+            if _lname(c.tag) == "Content"
+        ).strip()
+
+        new_psr = ET.Element(psr.tag, dict(orig_attrib))
+        for c in p_csrs:
+            new_psr.append(c)
+
+        has_soft_break = "\u2028" in p_txt
+        if has_soft_break:
+            # Short verse / quote lines must stay LeftAlign so InDesign never
+            # stretches spaces between words (preserves tight word spacing).
+            new_psr.set("Justification", "LeftAlign")
+            new_psr.set("FirstLineIndent", "0")
+        else:
+            # Genuine body prose is justified with standard body indentation.
+            new_psr.set("Justification", "LeftJustified")
+            new_psr.set("FirstLineIndent", "18")
+            new_psr.set("SpaceBefore", "1.5")
+            new_psr.set("SpaceAfter", "3")
+
+        out_psrs.append(new_psr)
+
+    return out_psrs
+
+
+def split_compound_verse_and_prose(story_root: ET.Element) -> bool:
+    """Scans story XML and splits compound ParagraphStyleRanges containing both
+    soft-break verse lines and regular body prose. Returns True if modified."""
+    parent_map = {c: p for p in story_root.iter() for c in p}
+    changed = False
+
+    for psr in list(story_root.iter()):
+        if _lname(psr.tag) != "ParagraphStyleRange":
+            continue
+
+        style = psr.attrib.get("AppliedParagraphStyle", "").lower()
+        if any(skip in style for skip in _SKIP_STYLES):
+            continue
+
+        # Only process compound ranges holding multiple paragraphs (2+ <Br /> tags)
+        brs = [c for c in psr.iter() if _lname(c.tag) == "Br"]
+        if len(brs) <= 1:
+            continue
+
+        # Only process if there is a soft break (\u2028) present in the text
+        txt = "".join(c.text or "" for c in psr.iter() if _lname(c.tag) == "Content")
+        if "\u2028" not in txt:
+            continue
+
+        parent = parent_map.get(psr)
+        if parent is None:
+            continue
+
+        try:
+            idx = list(parent).index(psr)
+        except ValueError:
+            continue
+
+        parent.remove(psr)
+        new_psrs = _split_single_psr_at_br(psr)
+        for offset, n_psr in enumerate(new_psrs):
+            parent.insert(idx + offset, n_psr)
+            parent_map[n_psr] = parent
+
+        changed = True
+
+    return changed
+
+
+def process_idml(idml_path: Path) -> bool:
+    """Processes an IDML archive in-place, splitting any compound mixed
+    verse/prose ranges in its stories."""
+    idml_path = Path(idml_path)
+    if not idml_path.exists():
+        return False
+
+    with zipfile.ZipFile(str(idml_path), "r") as zin:
+        names = zin.namelist()
+        data = {n: zin.read(n) for n in names}
+
+    modified = False
+    for n in names:
+        if n.startswith("Stories/") and n.endswith(".xml"):
+            try:
+                root = ET.fromstring(data[n])
+            except Exception:
+                continue
+
+            if split_compound_verse_and_prose(root):
+                data[n] = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+                modified = True
+
+    if modified:
+        tmp_path = idml_path.with_suffix(".split_tmp.idml")
+        with zipfile.ZipFile(str(tmp_path), "w", zipfile.ZIP_DEFLATED) as zout:
+            for n in names:
+                zout.writestr(n, data[n])
+        tmp_path.replace(idml_path)
+
+    return modified
