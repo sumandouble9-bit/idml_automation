@@ -33,6 +33,44 @@ catalog, so **one** donor profile serves every input book.
 
 ---
 
+## Architecture at a glance
+
+```mermaid
+flowchart TD
+    donor["Donor book<br/>(.indd → .idml)"]:::cfg
+    input["Unformatted .idml<br/>(18670 / 18722)"]:::inp
+
+    donor --> extract["Step 0 · StyleProfileExtractor"]:::cfg
+    extract --> profile[("house_profile.json<br/>+ master pages")]:::cfg
+
+    input --> parse["Step 1 · Parse to object model"]:::py
+    parse --> setup["Step 2 · Style transfer + doc setup<br/>#1 #2-5 #12-13 footer ISBN"]:::cfg
+    profile --> setup
+    setup --> remap["Step 3 · Paragraph remap + strip overrides<br/>#9 #14-15 #20-25"]:::py
+    remap --> charfix["Step 4 · Character fix + dedupe<br/>#10-11 #26-30"]:::py
+    charfix --> images["Step 5 · Inject images + tables<br/>#16 #17 #38"]:::py
+    images --> layout["Step 6 · Layout repair · InDesign<br/>#6-8 #18 #33-35 #37 #40"]:::jsx
+    layout --> validate{"Step 7 · Rule validator<br/>#31-32 #36"}:::val
+    validate -- "fail: route back to owning step" --> setup
+    validate -- pass --> export["Step 8 · Export"]:::jsx
+    export --> out["Formatted .idml + PDF/X"]:::out
+
+    classDef cfg fill:#e5e0f2,stroke:#5b4a9a,color:#2d2550;
+    classDef py fill:#dcebe3,stroke:#2f6d57,color:#1b3d31;
+    classDef jsx fill:#f2ddd3,stroke:#a4472c,color:#5a2516;
+    classDef val fill:#d8e6f0,stroke:#1f5f8b,color:#123a52;
+    classDef inp fill:#efece3,stroke:#6d685d,color:#2d2a24;
+    classDef out fill:#dcebe3,stroke:#2f6d57,color:#1b3d31;
+```
+
+**Reading it:** the donor (left) is extracted **once** into `house_profile.json`.
+Each unformatted book flows down the spine; Steps 2–5 are deterministic Python,
+Step 6 and 8 need InDesign, and Step 7's validator routes any failure back to the
+step that owns it. Colours: purple = authored/extracted once · green = Python ·
+orange = JSX/InDesign · blue = validator.
+
+---
+
 ## 1 · Where the `profile.json` comes from
 
 You never hand-write it. One **donor book** (any already-formatted Double Nine
