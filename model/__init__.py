@@ -1,5 +1,5 @@
-from .styles import ParagraphStyle, CharacterStyle
-from .story import StoryModel
 from .document import DocumentModel
+from .story import StoryModel, ParagraphRange
+from .styles import ParagraphStyle, CharacterStyle
 
-__all__ = ["ParagraphStyle", "CharacterStyle", "StoryModel", "DocumentModel"]
+__all__ = ["DocumentModel", "StoryModel", "ParagraphRange", "ParagraphStyle", "CharacterStyle"]

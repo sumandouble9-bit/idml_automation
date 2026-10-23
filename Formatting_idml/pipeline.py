@@ -1,8 +1,9 @@
 """
 Formatting_idml: Master Pipeline
 Clean, organized, OOP facade uniting all Formatting_idml components:
-EpubParser, CaptionInjector, ImageLayoutManager, TextStyleNormalizer, and ChapterProcessor.
-Supports isolated chapter-by-chapter iteration and full-book execution.
+EpubParser, CaptionInjector, ImageLayoutManager, TextStyleNormalizer,
+ChapterProcessor, Validator, and PdfExporter.
+Follows Dependency Injection, Single Responsibility, and Open/Closed principles.
 """
 
 import sys
@@ -19,16 +20,28 @@ from Formatting_idml.caption_injector import CaptionInjector
 from Formatting_idml.image_layout_manager import ImageLayoutManager
 from Formatting_idml.text_style_normalizer import TextStyleNormalizer
 from Formatting_idml.chapter_processor import ChapterProcessor, ChapterInfo
+from Formatting_idml.pdf_exporter import PdfExporter
+from validate.validator import Validator
 
 
 class FormattingIDMLPipeline:
     """
     1st Module: Formatting_idml
     Clean, OOP orchestrator for formatting IDML books with EPUB-grounded styling,
-    table preservation, adaptive image injection, and chapter-wise reporting.
+    table preservation, adaptive image injection, chapter-wise reporting,
+    and automated pre- and post-layout validation quality gates.
     """
 
-    def __init__(self, book_id: str, workspace_root: Optional[str] = None):
+    def __init__(
+        self,
+        book_id: str,
+        workspace_root: Optional[str] = None,
+        chapter_processor: Optional[ChapterProcessor] = None,
+        normalizer: Optional[TextStyleNormalizer] = None,
+        layout_manager: Optional[ImageLayoutManager] = None,
+        exporter: Optional[PdfExporter] = None,
+        validator: Optional[Validator] = None,
+    ):
         self.book_id = book_id
         self.root = Path(workspace_root).resolve() if workspace_root else Path(__file__).parent.parent.resolve()
 
@@ -45,15 +58,18 @@ class FormattingIDMLPipeline:
         self.donor_idml = self.root / "reference_idml_files" / "reference_donor.idml"
         self.logo_path = self.root / "logo" / "LEAF-BOUND-trimmed.png"
 
-        # Initialize OOP components
-        self.chapter_processor = ChapterProcessor()
-        self.normalizer = TextStyleNormalizer()
-        self.layout_manager = ImageLayoutManager()
+        # Injected OOP collaborators (with clean default factories)
+        self.chapter_processor = chapter_processor or ChapterProcessor()
+        self.normalizer = normalizer or TextStyleNormalizer()
+        self.layout_manager = layout_manager or ImageLayoutManager()
+        self.exporter = exporter or PdfExporter()
+        self.validator = validator or Validator()
 
         self.pkg: Optional[IDMLPackage] = None
         self.doc: Optional[DocumentModel] = None
         self.fmap: Optional[EpubFormattingMap] = None
         self.image_map: Dict[str, Path] = {}
+        self.initial_para_counts: Dict[str, int] = {}
 
     def setup_environment(self):
         """Unpacks IDML package and loads object model."""
@@ -63,6 +79,12 @@ class FormattingIDMLPipeline:
         self.doc = DocumentModel(self.pkg)
         self.doc.load()
         print(f"         Loaded {len(self.doc.stories)} stories and {len(self.doc.spreads)} spreads.")
+
+        # Record initial paragraph counts for stability quality gate
+        self.initial_para_counts = {
+            s_name: len(story.get_paragraph_ranges())
+            for s_name, story in self.doc.stories.items()
+        }
 
         # Parse EPUB if available
         if self.matching_epub.exists():
@@ -109,6 +131,7 @@ class FormattingIDMLPipeline:
         - Splits packed placeholders and injects structured image tokens
         - Strips manual Word overrides
         - Merges character runs safely
+        - Asserts Pre-Layout Document Quality Gate via Validator
         """
         target_label = f"Chapter {chapter_num}" if chapter_num else "Full Book (All Chapters)"
         print(f"\n[Step 4] Formatting Story Typography & Tables ({target_label})...")
@@ -177,6 +200,15 @@ class FormattingIDMLPipeline:
         # Save document XML
         self.doc.save()
 
+        # Run Pre-Layout Automated Quality Gate
+        if not chapter_num:
+            is_valid, report = self.validator.validate(self.doc, self.initial_para_counts)
+            if is_valid:
+                print(f"         [PASS] Pre-Layout Document Quality Gates PASSED (Styles, Markers, Stability).")
+            else:
+                for rule_name, issues in report.items():
+                    print(f"         [WARN] Quality Gate '{rule_name}': {len(issues)} issues detected.")
+
     def pack_and_export(self, skip_jsx: bool = False) -> Path:
         """Packs modified IDML and triggers InDesign PDF/X export."""
         output_idml = self.output_base / f"{self.input_idml.stem}_formatted.idml"
@@ -184,15 +216,17 @@ class FormattingIDMLPipeline:
         print(f"\n[Step 5] Formatted IDML saved to: {output_idml}")
 
         if not skip_jsx:
-            from Formatting_idml.pdf_exporter import PdfExporter
             print(f"\n[Step 6] Triggering InDesign Layout Repair & PDF/X Export via PdfExporter...")
-            exporter = PdfExporter()
             output_pdf = self.output_base / f"{self.input_idml.stem}_print.pdf"
-            success = exporter.export(str(output_idml), str(output_pdf), logo_path=str(self.logo_path) if self.logo_path.exists() else None)
+            success = self.exporter.export(
+                str(output_idml),
+                str(output_pdf),
+                logo_path=str(self.logo_path) if self.logo_path.exists() else None
+            )
             if success:
                 print(f"         [PASS] PDF/X Exported to: {output_pdf}")
-                print(f"\n[Step 7] Running Post-Layout PDF Quality Validation...")
-                passed, errors = exporter.validate_pdf(str(output_pdf))
+                print(f"\n[Step 7] Running Post-Layout PDF Quality Validation via Validator...")
+                passed, errors = self.exporter.validate_pdf(str(output_pdf))
                 if passed:
                     print(f"         [PASS] All PDF quality gates PASSED! (Images clear, zero dead white space)")
                 else:

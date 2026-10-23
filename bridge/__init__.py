@@ -1,3 +1,3 @@
-from .indesign_runner import InDesignRunner
+from .indesign_runner import InDesignRunner, InDesignBridge
 
-__all__ = ["InDesignRunner"]
+__all__ = ["InDesignRunner", "InDesignBridge"]

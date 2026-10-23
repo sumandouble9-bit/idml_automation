@@ -1,24 +1,47 @@
-from typing import Dict, List, Tuple
+"""
+validate: Validator
+Orchestrates pre-layout (IDML XML) and post-layout (PDF output) quality gates
+using polymorphic validation rules.
+"""
+
+from typing import Dict, List, Optional, Tuple
 from model.document import DocumentModel
-from validate.rules.check_styles import check_styles_integrity
-from validate.rules.check_images import check_images_integrity, check_images_visibility_and_layout
-from validate.rules.check_paragraph_count import check_paragraph_stability
+from validate.base import BaseRule, ValidationResult
+from validate.rules.check_styles import StyleIntegrityRule
+from validate.rules.check_images import ImageMarkerRule, PdfImageVisibilityRule
+from validate.rules.check_paragraph_count import ParagraphStabilityRule
 
 
 class Validator:
     """
-    Step 7: Rule Validator that acts as an automated quality gate.
-    Runs rule checks across the document and routes failure back to the owning step.
-    Supports both Pre-Layout (IDML XML) and Post-Layout (PDF output) validation.
+    Automated Quality Gate orchestrator.
+    Executes a collection of polymorphic BaseRule objects against IDML documents or exported PDFs.
+    Allows custom rule injection for specialized book formatting requirements.
     """
 
-    def __init__(self):
-        self.rules = [
-            ("Style & Font Integrity (Step 2/3/4)", check_styles_integrity),
-            ("Image Marker Integrity (Step 5)", check_images_integrity),
+    def __init__(
+        self,
+        document_rules: Optional[List[BaseRule]] = None,
+        pdf_rules: Optional[List[BaseRule]] = None
+    ):
+        self.document_rules: List[BaseRule] = document_rules if document_rules is not None else [
+            StyleIntegrityRule(),
+            ImageMarkerRule(),
         ]
+        self.pdf_rules: List[BaseRule] = pdf_rules if pdf_rules is not None else [
+            PdfImageVisibilityRule(),
+        ]
+        self.stability_rule = ParagraphStabilityRule()
 
-    def validate(self, doc: DocumentModel, initial_counts: Dict[str, int] = None) -> Tuple[bool, Dict[str, List[str]]]:
+    def add_document_rule(self, rule: BaseRule):
+        """Registers an additional pre-layout validation rule."""
+        self.document_rules.append(rule)
+
+    def add_pdf_rule(self, rule: BaseRule):
+        """Registers an additional post-layout validation rule."""
+        self.pdf_rules.append(rule)
+
+    def validate(self, doc: DocumentModel, initial_counts: Optional[Dict[str, int]] = None) -> Tuple[bool, Dict[str, List[str]]]:
         """
         Runs all pre-layout validation rules against the document model.
         Returns (is_valid, report_dict)
@@ -26,17 +49,18 @@ class Validator:
         report: Dict[str, List[str]] = {}
         all_passed = True
 
-        for rule_name, rule_fn in self.rules:
-            passed, errors = rule_fn(doc)
-            if not passed:
+        for rule in self.document_rules:
+            result = rule.validate(doc)
+            if not result.passed:
                 all_passed = False
-                report[rule_name] = errors
+                report[rule.name] = result.errors
 
         if initial_counts:
-            passed, errors = check_paragraph_stability(initial_counts, doc)
-            if not passed:
+            self.stability_rule.set_initial_counts(initial_counts)
+            stability_res = self.stability_rule.validate(doc)
+            if not stability_res.passed:
                 all_passed = False
-                report["Paragraph Stability (Content Preservation)"] = errors
+                report[self.stability_rule.name] = stability_res.errors
 
         return all_passed, report
 
@@ -47,9 +71,12 @@ class Validator:
         Returns (is_valid, report_dict)
         """
         report: Dict[str, List[str]] = {}
-        passed, errors = check_images_visibility_and_layout(pdf_path)
-        if not passed:
-            report["Image Visibility & Zero White Space Gate"] = errors
+        all_passed = True
 
-        return len(report) == 0, report
+        for rule in self.pdf_rules:
+            result = rule.validate(pdf_path)
+            if not result.passed:
+                all_passed = False
+                report[rule.name] = result.errors
 
+        return all_passed, report
