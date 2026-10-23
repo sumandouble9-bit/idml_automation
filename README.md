@@ -133,20 +133,33 @@ flowchart TD
 * **Unresized Natural Scale**: Graphics are inserted at 100% natural scale using `FitOptions.FRAME_TO_CONTENT`. Artificial height squeezing is eliminated.
 * **Proportional Boundary Safety**: If an image exceeds the printable column width (`colW`) or page column height (`maxH = 480 pt`), it is scaled down proportionally to prevent margin clipping.
 
-### C. 100% Data Table Preservation
+### C. Visibility Floor & OpenCV Edge-Density Analysis
+* **Goal**: Ensure text on coins, statues, engravings, and fine-line diagrams is never compressed into an illegible thumbnail during layout autoflow.
+* **Logic**:
+  * During asset extraction (Step 2), images undergo **OpenCV edge-density analysis** (`cv2.Canny` / Sobel gradient distribution).
+  * High edge density indicates dense high-frequency information (such as engraved Latin inscriptions, fine coin details, or intricate illustrations).
+  * The analysis sets an **immutable minimum size** threshold:
+    - **Portrait**: $H \ge 220\text{--}260\text{ pt}$ (preventing reduction to thumbnail height).
+    - **Landscape**: Full column width ($W \approx 316\text{ pt}$).
+  * The image is never shrunk below this threshold.
+* **Layout & Quality Gate Integration**:
+  * **InDesign Layout Engine (`bridge/jsx/export.jsx`)**: When fitting an anchored image frame, InDesign asserts the rendered height never drops below this floor. If available vertical room on the page is insufficient to accommodate the minimum height, the image anchor automatically flows to the head of the following spread rather than being squeezed into an unreadable scale.
+  * **Post-Layout Validation Gate (`validate/rules/check_images.py` & `PdfExporter.validate_pdf`)**: Scans each rendered image xref in the generated PDF/X to assert it meets or exceeds its assigned clarity floor, flagging any over-compressed assets in the validation report.
+
+### D. 100% Data Table Preservation
 * **Pre-Indexed Cell Protection**: Prior to applying body paragraph transforms, all table paragraphs and cells are indexed into `table_p_set`. Body style normalizers and Word override strippers strictly bypass these cells.
 * **Cell Font Style & Size Retention**: Header rows maintain bold formatting; numeric and monetary data retain original point sizes, alignment, and fractional styling.
 * **Multi-Row Table Page Breaking**: Body rows of multi-row data tables are configured with `row.autoGrow = true` and `row.keepWithNextRow = false`, allowing long multi-page tables (such as price schedules) to break naturally across page margins.
 
-### D. Un-Splittable Single-Cell Table Breakdown
+### E. Un-Splittable Single-Cell Table Breakdown
 * In Word imports, long poems, ballads, or boxed quotes are frequently wrapped in a 1×1 single-cell table. When the poem's row height exceeds the printable page height (e.g. 585 pt vs. 522 pt page limit), InDesign cannot split a single row across pages, causing a permanent overset halt.
 * The layout engine identifies single-cell text-only tables that exceed page height or overflow, and converts them to ordinary flowing text using `tb.convertToText("\t", "\r")`. This restores the poem lines to normal flowing paragraphs matching the EPUB `<blockquote>` structure, allowing them to flow cleanly across spreads.
 
-### E. Redundant Chapter Page-Break Purge
+### F. Redundant Chapter Page-Break Purge
 * In Word-generated IDML files, empty paragraphs with `PageBreak` or forced break characters often precede chapter headings, causing unwanted blank pages.
 * The normalizer safely scans the 3 paragraphs immediately preceding each `chapter_name` or `heading_1` paragraph. If an empty paragraph contains only a page-break character or whitespace, it is removed without altering body text flow.
 
-### F. Page Threading & Overset Resolution
+### G. Page Threading & Overset Resolution
 * During layout repair in InDesign, the engine checks both `lastTf.overflows` and `story.overflows`.
 * New pages with `A-Master` are dynamically appended and threaded until all story text has flowed cleanly with zero overset text frames. Single-frame frontmatter stories (e.g. title or copyright) are safeguarded against accidental runaway threading.
 * Total document page count is automatically rounded to an even number to satisfy two-page facing print spread requirements.
