@@ -227,23 +227,42 @@
                 // Format parent paragraph and prepare anchor insertion point
                 var parentPara = m.paragraphs[0];
                 var targetIns = m.insertionPoints[0];
+                var imgPara = null;
+                var capPara = null;
 
                 if (captionText.length > 0) {
-                    m.contents = captionText;
+                    m.contents = "\r" + captionText;
+                    imgPara = m.paragraphs[0];
+                    capPara = m.paragraphs[1];
+
+                    // Style caption paragraph
                     if (figCapStyle && figCapStyle.isValid) {
-                        try { parentPara.appliedParagraphStyle = figCapStyle; } catch(eP) {}
+                        try { capPara.appliedParagraphStyle = figCapStyle; } catch(eP) {}
                     }
                     if (capStyle && capStyle !== "") {
-                        try { parentPara.fontStyle = capStyle; } catch(eFS) {}
-                        try { m.fontStyle = capStyle; } catch(eFS2) {}
+                        try { capPara.fontStyle = capStyle; } catch(eFS) {}
+                        try { capPara.characters.everyItem().fontStyle = capStyle; } catch(eFS2) {}
                     }
-                    parentPara.justification = Justification.CENTER_ALIGN;
-                    parentPara.firstLineIndent = 0;
-                    parentPara.leftIndent = 0;
-                    parentPara.rightIndent = 0;
-                    parentPara.spaceBefore = 4;
-                    parentPara.spaceAfter = 6;
-                    targetIns = parentPara.insertionPoints[0];
+                    capPara.justification = Justification.CENTER_ALIGN;
+                    capPara.firstLineIndent = 0;
+                    capPara.leftIndent = 0;
+                    capPara.rightIndent = 0;
+                    capPara.spaceBefore = 0;
+                    capPara.spaceAfter = 6;
+                    try { capPara.keepAllLinesTogether = true; } catch(eK2) {}
+
+                    // Style image paragraph: exactly 1mm (2.835 pt) space between image and caption
+                    imgPara.justification = Justification.CENTER_ALIGN;
+                    imgPara.firstLineIndent = 0;
+                    imgPara.leftIndent = 0;
+                    imgPara.rightIndent = 0;
+                    imgPara.spaceBefore = 4;
+                    imgPara.spaceAfter = 2.835; // 1 mm vertical separation
+                    try { imgPara.pointSize = 0.1; } catch(ePS) {}
+                    try { imgPara.leading = 0.1; } catch(eLD) {}
+                    try { imgPara.keepWithNext = 1; } catch(eK1) {}
+
+                    targetIns = imgPara.insertionPoints[0];
                 } else {
                     m.contents = "";
                     parentPara.justification = Justification.CENTER_ALIGN;
