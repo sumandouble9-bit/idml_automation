@@ -47,12 +47,6 @@ idml_automation/
 ├── setup/                       # Document Setup & Catalog Synchronization
 │   ├── doc_setup.py             # Page geometry, margin calculations, and spread normalizers
 │   └── style_transfer.py        # Transfers catalog styles & fonts from donor to target IDML
-├── validate/                    # Post-Layout Quality Verification Suite
-│   ├── rules/                   # Individual validation rule checks
-│   │   ├── check_images.py      # Asserts image clarity, dimensions, and lack of clipping
-│   │   ├── check_paragraph_count.py # Verifies paragraph count stability
-│   │   └── check_styles.py      # Validates style resolution and orphan style cleanup
-│   └── validator.py             # RuleValidator runner
 ├── run_formatting.py            # Unified CLI entry point for isolated chapters and full-book runs
 └── README.md                    # System architecture, logic documentation, and usage guide
 ```
@@ -144,7 +138,7 @@ flowchart TD
   * The image is never shrunk below this threshold.
 * **Layout & Quality Gate Integration**:
   * **InDesign Layout Engine (`bridge/jsx/export.jsx`)**: When fitting an anchored image frame, InDesign asserts the rendered height never drops below this floor. If available vertical room on the page is insufficient to accommodate the minimum height, the image anchor automatically flows to the head of the following spread rather than being squeezed into an unreadable scale.
-  * **Post-Layout Validation Gate (`validate/rules/check_images.py` & `PdfExporter.validate_pdf`)**: Scans each rendered image xref in the generated PDF/X to assert it meets or exceeds its assigned clarity floor, flagging any over-compressed assets in the validation report.
+  * **Post-Layout Validation Gate (`PdfExporter.validate_pdf`)**: Scans each rendered image xref in the generated PDF/X to assert it meets or exceeds its assigned clarity floor, flagging any over-compressed assets in the validation report.
 
 ### D. 100% Data Table Preservation
 * **Pre-Indexed Cell Protection**: Prior to applying body paragraph transforms, all table paragraphs and cells are indexed into `table_p_set`. Body style normalizers and Word override strippers strictly bypass these cells.
