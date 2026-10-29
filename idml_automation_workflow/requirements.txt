@@ -1,4 +1,6 @@
 # Required Python dependencies for IDML Automation Workflow
-pywin32>=306
-pillow>=10.0.0
+# Pinned exactly: pywin32 312 shipped Py3.14 DLLs on a Py3.10 venv (broke win32com),
+# and pillow 12.x broke _imaging (disabled image pre-scaling). These versions are known-good.
+pywin32==306
+pillow==10.4.0
 fonttools>=4.40.0

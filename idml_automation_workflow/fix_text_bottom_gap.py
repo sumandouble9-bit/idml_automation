@@ -28,7 +28,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import measure_page_gaps as mpg   # reuse its JS_MEASURE to re-measure after the fix
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "image_inject"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "injection"))
 import resolve_overset as rovs    # shared overset resolver (adds tail frames/pages)
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_cases"))
 import text_gap_fill, caption_center, overset_resolve, image_refit
