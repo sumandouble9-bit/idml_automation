@@ -27,13 +27,28 @@ for (var si = 0; si < doc.stories.length; si++){
             var k = key(p.contents);
             if (k.length < 4) continue;
             var sn = ""; try { sn = p.appliedParagraphStyle.name.toLowerCase(); } catch(e){}
-            if (CENTER[k]){
+            var isCenter = !!CENTER[k];
+            var isRight = !!RIGHT[k];
+            var isBlock = !!BLOCK[k];
+            if (isCenter){
                 try { if (p.justification != Justification.CENTER_ALIGN){ p.justification = Justification.CENTER_ALIGN; nCenter++; } } catch(e){}
-            } else if (RIGHT[k]){
+            } else if (isRight){
                 try { if (p.justification != Justification.RIGHT_ALIGN){ p.justification = Justification.RIGHT_ALIGN; nRight++; } } catch(e){}
             }
-            if ((sn.indexOf("quote") >= 0 || sn.indexOf("block") >= 0) && !BLOCK[k]){
+            if ((sn.indexOf("quote") >= 0 || sn.indexOf("block") >= 0) && !isBlock && !isCenter && !isRight){
                 try { if (bodyStyle){ p.appliedParagraphStyle = bodyStyle; nBlock++; } } catch(e){}
+            }
+            var ptxt = p.contents;
+            if (ptxt.indexOf("\u2028") >= 0 || ptxt.indexOf("\n") >= 0){
+                try {
+                    if (isRight){
+                        p.justification = Justification.RIGHT_ALIGN;
+                    } else if (isCenter){
+                        p.justification = Justification.CENTER_ALIGN;
+                    } else if (p.justification == Justification.LEFT_JUSTIFIED || p.justification == Justification.FULLY_JUSTIFIED){
+                        p.justification = Justification.LEFT_ALIGN;
+                    }
+                } catch(e){}
             }
         } catch(eP){}
     }

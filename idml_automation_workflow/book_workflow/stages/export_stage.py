@@ -1,26 +1,20 @@
-"""ExportStage: integrity-gate the injected IDMLs, export PDFs, sync the TOC.
-
-Faithful port of run_step4_pdf_export: it rejects any book that lost body
-paragraphs, dropped images, broke side-by-side pairs, or has caption/word-spacing
-problems; exports the clean books (and, separately, the rejected ones for review)
-to PDF; then synchronises TOC page numbers against the produced PDF and writes the
-standardised renamed deliverable.
-"""
+"""Stage 4: Quality Audit Gate, TOC Sync & Print PDF Export via InDesign."""
 
 import shutil
 import sys
 import zipfile
+from pathlib import Path
+
+from .base_stage import WorkflowStage, StageResult
 
 
-class ExportStage:
+class QualityAuditAndExportStage(WorkflowStage):
+    """Stage 4: Audits document integrity, exports print-quality PDF, and syncs TOC numbers."""
+
     name = "export"
-    title = "STEP 4: HIGH-QUALITY PRINT PDF EXPORT (via Adobe InDesign)"
-
-    def __init__(self, paths):
-        self.paths = paths
+    title = "STEP 4: HIGH-QUALITY PRINT PDF EXPORT & QUALITY AUDIT (via Adobe InDesign)"
 
     def _target_idmls(self, stems):
-        # Injected IDMLs for the batch, falling back to normalized then formatted.
         injected = [f for f in self.paths.final_idml_dir.glob("*_injected.idml")
                     if any(stem in f.name for stem in stems)]
         if injected:
@@ -32,28 +26,32 @@ class ExportStage:
         return [f for f in self.paths.format_dir.glob("*_formatted.idml")
                 if any(stem in f.name for stem in stems)]
 
-    def _caption_map(self, isbn):
-        # Build the EPUB caption map for integrity checks (empty on any failure).
+    def _caption_map(self, isbn: str):
         epub = self.paths.epub_dir / f"{isbn}.epub"
         if not epub.exists():
             return {}
         try:
-            import epub_tools
+            from ..core import epub_tools
             return epub_tools.build_caption_map(str(epub))
         except Exception:
-            return {}
+            try:
+                import epub_tools
+                return epub_tools.build_caption_map(str(epub))
+            except Exception:
+                return {}
 
-    def _audit(self, doc, isbn, caption_map):
-        # Run every integrity check and return the list of rejection reasons.
+    def _audit(self, doc: Path, isbn: str, caption_map: dict):
         reasons = []
         source = self.paths.input_dir / f"{isbn}.idml"
         if not (source.exists() and "_injected" in doc.name):
             return reasons
+
         try:
             import check_missing_paragraphs
             reasons.extend(check_missing_paragraphs.check(str(source), str(doc), caption_map))
         except Exception as exc:
             print(f"  [warn] paragraph check skipped for {isbn}: {exc}")
+
         try:
             placeholders = 0
             with zipfile.ZipFile(str(doc)) as archive:
@@ -61,9 +59,10 @@ class ExportStage:
                     if name.startswith("Stories/") and name.endswith(".xml"):
                         placeholders += archive.read(name).decode("utf-8", "replace").count("###Insert")
             if placeholders:
-                reasons.append("MISSING_IMAGES: %d placeholder(s) left unplaced" % placeholders)
+                reasons.append(f"MISSING_IMAGES: {placeholders} placeholder(s) left unplaced")
         except Exception as exc:
             print(f"  [warn] image-placeholder check skipped for {isbn}: {exc}")
+
         try:
             import check_sidebyside
             ok, detail = check_sidebyside.check(str(source), str(doc))
@@ -71,48 +70,53 @@ class ExportStage:
                 reasons.append("SIDEBYSIDE not side-by-side: " + detail)
         except Exception as exc:
             print(f"  [warn] side-by-side check skipped for {isbn}: {exc}")
+
         try:
             import check_word_spacing_and_block
             reasons.extend(check_word_spacing_and_block.check(str(doc)))
         except Exception as exc:
             print(f"  [warn] word-spacing/block check skipped for {isbn}: {exc}")
+
         try:
             import check_caption
             reasons.extend(check_caption.check(str(doc), caption_map))
         except Exception as exc:
             print(f"  [warn] caption check skipped for {isbn}: {exc}")
+
         return reasons
 
-    def _reject(self, doc, isbn, reasons, reject_dir):
-        # Move a failing IDML to the rejection folder and record the reasons.
+    def _reject(self, doc: Path, isbn: str, reasons: list, reject_dir: Path) -> Path:
         reject_dir.mkdir(parents=True, exist_ok=True)
         try:
-            from core.isbn_manager import get_output_base_name
+            from ..core.isbn_manager import get_output_base_name
             dest = reject_dir / f"{get_output_base_name(isbn)}.idml"
         except Exception:
             dest = reject_dir / doc.name
+
         shutil.move(str(doc), str(dest))
         with open(str(dest) + ".reasons.txt", "w", encoding="utf-8") as handle:
-            handle.write(chr(10).join(["REJECTED:"] + list(reasons)))
+            handle.write("\n".join(["REJECTED:"] + list(reasons)))
         print(f"  [REJECT] {isbn}: {reasons[0][:90]} -> rejected_files/ (PDF still generated)")
         return dest
 
     def _register_check_paths(self):
-        # Make the audit modules importable, matching the original sys.path setup.
         for path in (self.paths.workflow_dir / "test_cases", self.paths.injection_dir):
             text = str(path)
             if text not in sys.path:
                 sys.path.insert(0, text)
 
-    def run(self, books, force=False):
-        # Gate, export and finalise every book in the batch.
-        import convert_to_pdf
+    def run(self, books: list, force: bool = False) -> StageResult:
+        result = StageResult(self.name)
+        try:
+            import convert_to_pdf
+        except ImportError:
+            from ..core import pdf_export as convert_to_pdf
 
         self.paths.final_pdf_dir.mkdir(parents=True, exist_ok=True)
-        line = "=" * 70
-        print(f"\n{line}\n{self.title}")
-        print(f"Source IDMLs:  {self.paths.final_idml_dir}")
-        print(f"PDF Directory: {self.paths.final_pdf_dir}\n{line}")
+        self.print_header(
+            f"Source IDMLs:  {self.paths.final_idml_dir}\n"
+            f"PDF Directory: {self.paths.final_pdf_dir}"
+        )
 
         stems = {book.stem for book in books}
         target_idmls = self._target_idmls(stems)
@@ -137,6 +141,7 @@ class ExportStage:
             print(f"Exporting {len(target_idmls)} IDML document(s) to PDF...")
             for doc in target_idmls:
                 convert_to_pdf.convert_batch(target_path=str(doc), output_dir=str(self.paths.final_pdf_dir), force=force)
+                result.record(True)
         else:
             print("No books passed the integrity gate; exporting rejected books only.")
 
@@ -151,16 +156,16 @@ class ExportStage:
                     print(f"  [warn] could not export rejected PDF {doc.name}: {exc}")
 
         if not target_idmls:
-            return 0
+            return result
 
         self._sync_toc_and_rename(target_idmls, convert_to_pdf, force)
         print("\nStep 4 Complete! Verified PDF and IDML files available in:", self.paths.final_pdf_dir)
-        return 0
+        return result
 
     def _sync_toc_and_rename(self, target_idmls, convert_to_pdf, force):
-        # Sync TOC page numbers to the produced PDF, then write the renamed IDML.
-        from core.toc_synchronizer import sync_idml_toc_from_pdf
-        from core.isbn_manager import get_output_base_name
+        from ..core.toc_synchronizer import sync_idml_toc_from_pdf
+        from ..core.isbn_manager import get_output_base_name
+
         print("\nVerifying TOC page synchronization against generated PDFs...")
         for idml in target_idmls:
             clean_stem = idml.stem.replace("_injected", "").replace("_normalized", "").replace("_formatted", "")
@@ -183,3 +188,7 @@ class ExportStage:
                 renamed_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(idml, renamed_dir / f"{base_out}.idml")
                 print(f"  [Renamed IDML] Saved {base_out}.idml into renamed_output_files/")
+
+
+# Alias
+ExportStage = QualityAuditAndExportStage

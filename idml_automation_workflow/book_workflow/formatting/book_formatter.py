@@ -1,11 +1,4 @@
-"""BookFormatter: the single, language-agnostic formatting engine.
-
-Replaces the duplicated pipeline.py (English) and pipeline_es.py (Spanish) with
-one class that runs the same page sequence for every language. Each page object
-dispatches to the proven per-language implementation, so behaviour is identical
-while the flow lives in one place. The only language-dependent step is the
-English-only internal typography post-process, expressed as a config flag.
-"""
+"""BookFormatter: OOP engine coordinating document typography and page-by-page layout."""
 
 import json
 import tempfile
@@ -18,11 +11,13 @@ from .document_setup.document_setup_page import DocumentSetupPage
 from .table_of_contents.table_of_contents_page import TableOfContentsPage
 from .title.title_page import TitlePage
 from .typography.typography_formatter import TypographyFormatter
+from ..core import font_manager, epub_style_enricher, typography_postprocessor
+from ..core.idml_utils import unzip, validate_zip, zipdir
 
 
 class BookFormatter:
-    # Runs stage 0 (fonts) -> the ordered page concerns -> EPUB style enrichment
-    # -> repack, producing a formatted IDML for a book in any language.
+    """Orchestrates formatting stages: fonts -> document setup -> title -> copyright -> TOC -> author -> typography."""
+
     PAGE_SEQUENCE = (
         DocumentSetupPage,
         TitlePage,
@@ -35,11 +30,7 @@ class BookFormatter:
     def __init__(self, reference_file):
         self.reference_file = Path(reference_file)
 
-    def format(self, book, output_path):
-        # Format one book to output_path, returning the stage report dict.
-        from core import font_manager
-        from core.idml_utils import unzip, validate_zip, zipdir
-
+    def format(self, book, output_path) -> dict:
         target = Path(book.path).resolve()
         reference = self.reference_file.resolve()
         output = Path(output_path).resolve()
@@ -79,7 +70,6 @@ class BookFormatter:
                 report["stages"][page.report_key] = page.apply(work_dir, ref_dir, book)
 
             print("  [7/7] Enriching inline typography from EPUB (bold, italic, underline)...")
-            from core import epub_style_enricher
             report["stages"]["epub_enrichment"] = epub_style_enricher.enrich_extracted_idml(
                 work_dir, book_name=target.stem, lang=book.language_code
             )
@@ -91,13 +81,10 @@ class BookFormatter:
                 raise RuntimeError(f"Generated IDML failed ZIP validation: {output}")
 
             if book.language.runs_internal_typography_postprocess:
-                from core import typography_postprocessor
                 try:
                     report["stages"]["typography_postprocessor"] = typography_postprocessor.postprocess_idml(output)
                 except Exception as exc:
                     print(f"  Note: typography_postprocessor encountered: {exc}")
 
         report["elapsed_seconds"] = round(time.time() - start_time, 2)
-        report_file = output.with_name(f"{output.stem}_report.json")
-        report_file.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
         return report

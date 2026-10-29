@@ -1,227 +1,157 @@
-# Automated EPUB-to-IDML Formatting & Image-Injection Pipeline
+# IDML Automation Workflow Engine (`book_workflow`)
 
-End-to-end batch pipeline that takes raw IDML books and produces print-ready,
-reference-matched IDMLs and PDFs. It formats each book to a reference IDML layout
-("same to same") while preserving book-specific content (titles, authors, ISBNs,
-chapters, text), injects the book's EPUB images with captions, fills short text
-pages, and audits/exports the result.
-
-Everything runs from **one command**: `python run_pipeline.py`.
+A modular, Object-Oriented automated publishing system for processing dual-language (English and Spanish) IDML manuscripts and EPUB packages into press-compliant print PDFs and standardized IDML books.
 
 ---
 
-## Workflow (what runs, in order)
-
-| Step | Stage | Script | Reads | Writes |
-|:---:|:---|:---|:---|:---|
-| 1 | **Normalize** document setup (trim / margins / bleed) | `normalize_docs.py` | `input_files/` | `page_resize_output/` |
-| 2 | **Format** to reference layout (typography, pages, headings, styles) | `Scripts/pipeline.py` | `page_resize_output/` | `formate_document/` |
-| 2b | Typography **post-process** each formatted file (uniform Palatino 9.65 pt, clean footers) | `Scripts/core/typography_postprocessor.py` | `formate_document/` | *(in place)* |
-| 3 | **Inject** EPUB images + captions | `image_inject/inject_with_epub_captions.py` | `formate_document/` + `epub_input_files/` | `final_output_files/idml_files/` |
-| 3a | Typography **post-process** each injected file (restore `body_text`, fix footers) | `Scripts/core/typography_postprocessor.py` | `final_output_files/idml_files/` | *(in place)* |
-| 3b | **Fill text bottom-gaps** (reflow body text up at original spacing; TOC untouched) | `fix_text_bottom_gap.py` | `final_output_files/idml_files/` | *(overwrites in place)* |
-| 4 | **Audit + export PDFs** (overset / margin / missing-text checks) | `image_inject/audit_epub.py` | `final_output_files/idml_files/` | `final_output_files/pdf_files/` (+ `rejected_files/`) |
-
-Formatting (step 2) runs entirely on the IDML XML. Steps 3, 3b, and 4 drive
-Adobe InDesign via COM, so **InDesign must be installed and running** for those.
+## Table of Contents
+1. [Architecture & Design Principles](#architecture--design-principles)
+   - [What is "Workflow" (Pipeline)?](#what-is-workflow-pipeline)
+   - [Why `core` was Consolidated (Eliminating Duplication)](#why-core-was-consolidated-eliminating-duplication)
+   - [OOP Model & Class Hierarchy](#oop-model--class-hierarchy)
+2. [Workflow Stages](#workflow-stages)
+3. [Recent Fixes & Typography Hardening](#recent-fixes--typography-hardening)
+4. [CLI Usage Guide](#cli-usage-guide)
+5. [Directory Structure](#directory-structure)
+6. [Automated Quality Verification](#automated-quality-verification)
 
 ---
 
-## How to run
+## Architecture & Design Principles
 
-From the `idml_automation_workflow/` folder:
+### What is "Workflow" (Pipeline)?
+In book production, a **workflow** (or pipeline) is an automated sequence of specialized operations that transforms raw manuscript files into print-ready books. Rather than manually clicking through dozens of formatting dialogs in Adobe InDesign, the `book_workflow` engine coordinates the entire lifecycle across four distinct, auditable stages:
+1. **Stage 1 (Formatting):** Ingests raw IDML and reference layouts, standardizing typography, frontmatter pages, and headings.
+2. **Stage 2 (Normalization):** Standardizes page trim geometry (5.5 × 8.5 in), facing pages, margins (36/54 pt), and print bleeds (3 mm).
+3. **Stage 3 (Asset Injection):** Ingests companion EPUB archives, extracting high-resolution images, binding captions, building side-by-side tables, and adjusting bottom gaps and chapter top margins.
+4. **Stage 4 (Quality Audit & Export):** Runs automated integrity checks (missing text, overset frames, word spacing), drives InDesign COM to export print PDFs with two-page facing reader spreads, and synchronizes the IDML Table of Contents to actual PDF page numbers.
+
+The previous internal name `pipeline_engine` was renamed to **`book_workflow`** to clearly communicate this domain model.
+
+---
+
+### Why `core` was Consolidated (Eliminating Duplication)
+Previously, the repository contained two duplicate `core` directories:
+- `Scripts/core/` (contained 18 typography, XML, font, and TOC synchronizer utilities).
+- `pipeline_engine/core/` (contained only `indesign_app.py`).
+
+This created confusing import paths and ambiguity over where publishing utilities resided. 
+
+**All 19 core publishing modules have been merged into a single package:**
+```text
+idml_automation_workflow/book_workflow/core/
+```
+The duplicate `Scripts/core/` and `pipeline_engine/core/` folders have been removed.
+
+---
+
+### OOP Model & Class Hierarchy
+
+The system is structured around clean Object-Oriented design patterns:
+
+- **`Book` (`book_workflow.models.book.Book`)**: Represents a book entity, encapsulating its ISBN, detected language, asset paths (raw IDML, EPUB, intermediate IDMLs, final output IDML, and print PDF), and stage completion states.
+- **`WorkflowPaths` (`book_workflow.paths.WorkflowPaths`)**: Encapsulates filesystem directory resolution and automatically mounts subpackages onto `sys.path`.
+- **`WorkflowStage` (`book_workflow.stages.base_stage.WorkflowStage`)**: Abstract base class defining the contract for all processing stages:
+  - `name`: Human-readable stage identifier.
+  - `execute(book: Book) -> bool`: Executes the stage logic for the given book.
+  - `can_skip(book: Book) -> bool`: Determines if cached intermediate outputs can be safely reused.
+- **Stage Implementations:**
+  - `DocumentFormattingStage`: Pure-XML IDML formatting.
+  - `DocumentNormalizationStage`: Document geometry and spread normalization.
+  - `AssetInjectionStage`: Image extraction, caption placement, and bottom gap filling.
+  - `QualityAuditAndExportStage`: Preflight integrity gates and InDesign COM export.
+- **`BookWorkflow` (`book_workflow.workflow.BookWorkflow`)**: Master orchestrator class that manages the stage registry, processes individual or batch book collections, and manages error recovery.
+- **`InDesignApp` (`book_workflow.core.indesign_app.InDesignApp`)**: Context manager wrapping Adobe InDesign Windows COM automation (`__enter__` and `__exit__`), ensuring that document handles and application instances are cleanly closed without leaving orphan `InDesign.exe` processes.
+- **Page Hierarchy (`book_workflow.formatting`)**: `BasePage` abstract class extended by `TitlePage`, `CopyrightPage`, `AuthorPage`, and `TableOfContentsPage`, with language-specific implementations (`TitlePageEN`, `TitlePageES`, etc.) using polymorphism.
+
+---
+
+## Workflow Stages
+
+| Step | Stage Name | Class / Module | Purpose |
+|:---:|:---|:---|:---|
+| **1** | **Formatting** | `DocumentFormattingStage` | XML-level typography, Palatino 9.65pt body, Gill Sans MT 16pt headings, frontmatter layout. |
+| **2** | **Normalization** | `DocumentNormalizationStage` | Trim size 5.5 × 8.5 in, facing pages, 36pt / 54pt margins, 3mm bleeds. |
+| **3** | **Asset Injection** | `AssetInjectionStage` | EPUB figure extraction, caption binding, 2-column tables, LeafBound imprint logo. |
+| **3b** | **Gap Filling** | `fix_text_bottom_gap.py` | Eliminates vertical white space gaps by micro-reflowing body lines to bottom margin. |
+| **3c** | **Chapter Spacing** | `chapter_top_spacing.py` | Enforces rigid 14.5 pt top gap (`y0 = 86.04 pt`) and Recto (Page 7) chapter start. |
+| **4** | **Audit & Export** | `QualityAuditAndExportStage` | Missing paragraph / overset / word spacing audit, InDesign COM PDF export (`maxB=558pt`), TOC page sync. |
+
+---
+
+## Recent Fixes & Typography Hardening
+
+### 1. Word Spacing / Justification Fix on Signatures & Soft Breaks
+- **Issue:** Letter signatures (e.g., `Signed:\u2028BLACHEVELLE...`) stretched across the entire width of the page with extreme gaps between letters and words.
+- **Fix:** In `test_cases/fix_paragraph_styles.py`, `book_workflow/core/typography_postprocessor.py`, and `book_workflow/formatting/typography/typography_en.py`, right-aligned and centered paragraphs are strictly preserved from being converted to justified `body_text`. Paragraphs containing soft line breaks (`\u2028` or `\n`) are protected from `LeftJustified` or `FullyJustified` styles.
+
+### 2. Heading Splitting on Chapters & Books with Years (e.g., `1817`)
+- **Issue:** In *Les Misérables* (`9789370421240`), `BOOK THIRD—IN THE YEAR 1817` and `CHAPTER I—THE YEAR 1817` failed to split into two centered lines because `1817` was misidentified as a Table of Contents page number.
+- **Fix:** In `book_workflow/core/chapter_heading_fix.py`, replaced the greedy `\s\d{1,4}\s*$` regex with strict leader and tab detection (`(\.\s*){2,}\s*\d+` or `\t\s*\d+\s*$`). Headings ending in years now correctly split onto two lines separated by `\u2028`.
+
+---
+
+## CLI Usage Guide
+
+The single, unified command to run the complete publishing pipeline is **`run_book_pipeline.py`**:
 
 ```powershell
-# Process every book found in input_files/
-python run_pipeline.py
+# Run a specific book end-to-end by ISBN or filename:
+python run_book_pipeline.py 9789370421240
 
-# Process a single book (by file basename, with or without .idml)
-python run_pipeline.py 9789361422768
-```
+# Run all books through the complete workflow:
+python run_book_pipeline.py
 
-### Standalone utilities (optional, run on their own)
+# Run a single stage only:
+python run_book_pipeline.py 9789370421240 --step 1   # Stage 1: Formatting
+python run_book_pipeline.py 9789370421240 --step 2   # Stage 2: Normalization
+python run_book_pipeline.py 9789370421240 --step 3   # Stage 3: Asset Injection
+python run_book_pipeline.py 9789370421240 --step 3b  # Stage 3b: Bottom Gap Reflow
+python run_book_pipeline.py 9789370421240 --step 4   # Stage 4: PDF Export & Integrity Audit
 
-```powershell
-# Measure the bottom gap on every page + image sizes/placement, per book
-# -> final_output_files/page_gaps_report.txt
-python measure_page_gaps.py
-python measure_page_gaps.py 9789361422768      # one book
+# Filter by language:
+python run_book_pipeline.py --lang es
+python run_book_pipeline.py --lang en
 
-# Reflow-fill short text pages only (same step the pipeline runs as 3b)
-# -> overwrites final_output_files/idml_files/, logs in final_output_files/
-python fix_text_bottom_gap.py
+# Force re-execution of completed stages:
+python run_book_pipeline.py 9789370421240 --force
 ```
 
 ---
 
-## Input / Output folders
-
-Inputs live beside the workflow folder (under `D:\IDML-Creation\`); all outputs are
-created inside `idml_automation_workflow/`.
-
-| Folder | Role |
-|:---|:---|
-| `../input_files/` | **Input** — raw IDML books to process (step 1 input) |
-| `../epub_input_files/` | **Input** — matching EPUBs supplying images + captions (step 3) |
-| `Reference/` | **Input** — reference layout IDML (the `…MIS…` / Les Misérables template is auto-selected) |
-| `Fonts/` | **Input** — font files bundled into each document |
-| `page_resize_output/` | Output of step 1 (normalized IDMLs) |
-| `formate_document/` | Output of step 2 (reference-formatted IDMLs) |
-| `final_output_files/idml_files/` | Output of step 3 / 3b (injected + gap-filled IDMLs) |
-| `final_output_files/pdf_files/` | Output of step 4 (PDFs of books that passed audit) |
-| `final_output_files/rejected_files/{idml_files,pdf_files}/` | Books that failed audit, with a `*.audit.txt` reason file |
-| `final_output_files/*_report.txt` | Audit / gap reports (`audit_log.txt`, `books_summary_report.txt`, `page_gaps_report.txt`) |
-
-Folder names are matched by book basename throughout, so `input_files/9789361422768.idml`,
-`epub_input_files/9789361422768.epub`, and the outputs all line up.
-
----
-
-## Directory architecture
+## Directory Structure
 
 ```text
 idml_automation_workflow/
-├── run_pipeline.py                 # SINGLE entry point (steps 1 -> 4)
-├── fix_text_bottom_gap.py          # step 3b: reflow-fill short text pages
-├── measure_page_gaps.py            # standalone: per-page gap + image report
-├── Reference/                      # reference layout IDML(s)
-├── Fonts/                          # bundled font files
-├── page_resize_output/             # step 1 output
-├── formate_document/               # step 2 output
-├── final_output_files/                # step 3/3b/4 output (idml_files, pdf_files, rejected_files, reports)
-├── image_inject/                   # InDesign-driven injection + audit scripts
-│   ├── inject_with_epub_captions.py
-│   ├── epub_caption_apply.py / epub_tools.py / logo_inject.py
-│   ├── fix_image_layout.py / fix_table_fit.py
-│   └── audit_epub.py
-└── Scripts/                        # formatting stage (pure-XML)
-    ├── pipeline.py                 # formatting entry point (called by step 2)
-    ├── core/
-    │   ├── idml_utils.py           # shared XML / ZIP / font / story helpers
-    │   ├── font_manager.py         # font resolution & bundling
-    │   └── typography_postprocessor.py  # uniform typography + footer cleanup
-    ├── pages/
-    │   ├── normalize_document_setup.py  # body-page normalization (margins/geometry/frames)
-    │   ├── document_setup.py       # Task 1: trim, bleed, margins (frontmatter)
-    │   ├── title_page.py           # Tasks 2, 9, 10
-    │   ├── copyright_page.py       # Task 3
-    │   ├── toc_page.py             # Task 4
-    │   ├── author_page.py          # Task 5
-    │   ├── typography_and_styles.py# Tasks 6-8, 11-19
-    │   └── run_all_3_batch.py      # standalone batch wrapper for the formatting stage
-    └── Tests/
-        └── test_idml_pipeline.py   # verification suite (RUN_TESTS.bat)
+├── run_book_pipeline.py                 # Single Primary CLI runner (Book Production Workflow)
+├── fix_text_bottom_gap.py               # Stage 3b gap reflow
+├── measure_page_gaps.py                 # Page geometry and gap analyzer
+├── pdf_export.py                        # Standalone PDF export utility
+│
+├── book_workflow/                       # Master Object-Oriented Package
+│   ├── workflow.py                      # BookWorkflow orchestrator
+│   ├── paths.py                         # WorkflowPaths directory resolver
+│   ├── book_discovery.py                # Book model factory & discovery
+│   ├── models/                          # Domain models (Book)
+│   ├── stages/                          # Abstract and concrete stages (1-4)
+│   ├── core/                            # Consolidated 19 publishing modules (no duplicate core)
+│   ├── formatting/                      # Language-aware page and typography formatters
+│   └── config/                          # Language configuration and heuristics
+│
+├── injection/                           # EPUB image extraction and caption binding
+├── test_cases/                          # Automated quality audit gate scripts
+├── Output/                              # Intermediate stage outputs
+└── final_output_files/                  # Final production IDML, PDF, and audit reports
 ```
 
 ---
 
-## Formatting task matrix (step 2)
+## Automated Quality Verification
 
-The formatting stage implements the following, matched to the reference layout:
-
-| Task # | Description | Module |
-|:---:|:---|:---|
-| **1** | Book size, page margins, bleed; page/frame geometry | `document_setup.py` + `normalize_document_setup.py` |
-| **2** | Title page formatting & positioning | `title_page.py` |
-| **3** | Copyright page (dynamic ISBN/year, Double 9 Books) | `copyright_page.py` |
-| **4** | TOC page (dot leaders, clean numbering, EPUB-junk removal) | `toc_page.py` |
-| **5** | About the Author page | `author_page.py` |
-| **6** | Body text font & size (Palatino Linotype 9.65 pt) | `typography_and_styles.py` |
-| **7-8** | Restore bold / italic where applied | `typography_and_styles.py` |
-| **9-10** | Title-page sizes & separate "by" credit | `title_page.py` |
-| **11** | Split run-on chapter number + title lines | `typography_and_styles.py` |
-| **12** | H1 / H2 / H3 heading styles & positions | `typography_and_styles.py` |
-| **13-14** | Restore superscript / subscript | `typography_and_styles.py` |
-| **15-17** | Merge duplicate bold/italic/underline/all-caps styles & verify | `typography_and_styles.py` |
-| **18-19** | Index & footnote formatting / spacing | `typography_and_styles.py` |
-
----
-
-## Tests
-
-```powershell
-python .\Scripts\Tests\test_idml_pipeline.py    # or RUN_TESTS.bat
-```
-
-
----
-
-## Spanish Publishing Pipeline (`Scripts/spanish/`)
-
-A dedicated 4-stage pipeline tuned specifically for Spanish titles:
-1. **Title Page:** Preserves the Spanish author credit format (`Por` rendered in *italic* font).
-2. **Copyright Page:** Formats Spanish legal disclosures with year and double-dash ISBN formatting.
-3. **Table of Contents (TOC):** Formats *Contenido* headers, dots leader tab stops, right-aligned page numbers, and page-break isolation.
-4. **Author Page:** Detects *Sobre la autoría*, positions content cleanly, and ensures an empty separator page before body chapters begin.
-5. **Headings & Body Typography:** Enforces 16pt Gill Sans MT headings with 1-space sinkage and Palatino Linotype 9.65pt body text.
-
-### How to Run Spanish Pipeline
-
-```powershell
-# From idml_automation_workflow/:
-# 1-Click Batch:
-RUN_SPANISH_PIPELINE.bat
-
-# Or via Python (all books):
-python run_spanish_pipeline.py
-
-# Single book:
-python run_spanish_pipeline.py 9788166131264
-```
-
----
-
-## Step-by-Step Execution (For Any Book)
-
-Each stage can also be executed step-by-step with automatic language detection:
-
-| Step | Purpose | Command | 1-Click Batch |
-|:---:|:---|:---|:---|
-| **Step 1** | **Typography & Layout Formatting** | `python step1_format.py` | `RUN_STEP1_FORMAT.bat` |
-| **Step 2** | **Document Setup Normalization (5.5x8.5 in)** | `python step2_normalize.py` | `RUN_STEP2_NORMALIZE.bat` |
-| **Step 3** | **EPUB Image & Caption Injection** | `python step3_inject_images.py` | `RUN_STEP3_INJECT.bat` |
-| **Step 4** | **High-Quality Print PDF Export** | `python step4_export_pdf.py` | `RUN_STEP4_PDF.bat` |
-
-
----
-
-## Dual-Language Support & Routing (English & Spanish)
-
-The pipeline seamlessly processes both **English** and **Spanish** books side-by-side using unified input folders:
-- **`input_files/`**: Place all raw `.idml` manuscripts (both English and Spanish).
-- **`epub_input_files/`**: Place all corresponding `.epub` asset files (both English and Spanish).
-
-### 1. Automatic Language Detection
-When running `step1_format.py`, the engine automatically identifies each book's language without requiring manual flags:
-- **Filename Heuristics:** Checks for `_es`, `spanish`, `_en`, `english` in the file name.
-- **Content Story Sampling:** Analyzes the first 15 XML story files for native language markers:
-  - *Spanish Markers:* `capítulo`, `contenido`, `sobre la autoría`, `prólogo`, `parte primera`, `derechos de autor`, `por `
-  - *English Markers:* `chapter`, `contents`, `about the author`, `preface`, `part one`, `copyright`, `published by`, `by `
-- Books with predominantly Spanish markers are routed to `Scripts/spanish/pipeline_es.py`.
-- Books with predominantly English markers are routed to `Scripts/pipeline.py`.
-
-### 2. Typographical & Structural Differences Handled
-
-| Component | Spanish Rules (`pipeline_es.py`) | English Rules (`pipeline.py`) |
-|:---|:---|:---|
-| **Title Page** | Author credit formatted with *italic* *"Por"*, clean subtitle sinkage | Author credit formatted with standard roman *"by"* credit |
-| **Copyright Page** | Spanish legal text, translated publishing rights, formatted ISBN | Double 9 Books English publishing declaration & copyright notices |
-| **Table of Contents** | Header styled as *"Contenido"*, right-aligned page numbers with dot leaders (`. . . .`), page break isolation | Header styled as *"Contents"*, dot leaders, EPUB markup cleanup |
-| **Author Page** | Detects *"Sobre la autoría"*, guarantees blank separator page before body chapters | Detects *"About the Author"*, positions content according to reference |
-| **Table Layout** | Special table-fit overset protection and cell height balancing | Cell width balancing and column autofit |
-| **Body Typography** | Palatino Linotype 9.65pt, Gill Sans MT 16pt sinkage headings | Palatino Linotype 9.65pt, Gill Sans MT 16pt headings, run-on chapter splitting |
-
-### 3. Manual Language Overrides (Flags)
-You can optionally bypass automatic detection and force a specific language via CLI flags:
-
-```powershell
-# Force Spanish processing on all books:
-python step1_format.py --lang es
-
-# Force English processing on all books:
-python step1_format.py --lang en
-
-# Force specific language on a single book:
-python step1_format.py 9788166131264 --lang es
-python step1_format.py 9789361422768 --lang en
-```
+Before deliverables are approved for production, `test_cases/audit.py` executes strict preflight gates:
+- **`check_missing_paragraphs.py`**: Compares raw input story text against output story text to ensure **zero missing paragraphs**.
+- **`check_overset.py`**: Checks all text frames via InDesign COM to ensure no overset text.
+- **`check_word_spacing_and_block.py`**: Verifies no excessive word spacing or stretched signatures exist.
+- **`check_sidebyside.py`**: Validates paired illustrations in two-column table layouts.
+- **`check_caption.py`**: Confirms that every illustration has its matching caption.
+- **`check_bleed.py`**: Validates 3 mm bleeds on all trimmed pages.

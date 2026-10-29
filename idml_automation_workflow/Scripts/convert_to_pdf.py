@@ -104,7 +104,7 @@ def release_pdf_lock(filepath: Path):
 def convert_single_idml(app, idml_path: Path, output_pdf_path: Path) -> dict:
     """Converts a single IDML file to High Quality Print PDF."""
     try:
-        wf_dir = ROOT_DIR if (ROOT_DIR / "run_unified_dual_pipeline.py").exists() else ROOT_DIR.parent
+        wf_dir = ROOT_DIR if (ROOT_DIR / "run_book_pipeline.py").exists() else ROOT_DIR.parent
         sys.path.insert(0, str(wf_dir))
         sys.path.insert(0, str(ROOT_DIR / "Scripts"))
         sys.path.insert(0, str(ROOT_DIR / "Scripts" / "spanish"))

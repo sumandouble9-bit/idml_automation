@@ -149,7 +149,7 @@ def normalize_headings(sroot):
             continue
         # TOC rows also look like "CHAPTER I .... 41": a trailing page number or
         # dot leaders mean it is a contents entry, not a heading -> skip.
-        if re.search(r"(\.\s*){3,}", txt) or re.search(r"\s\d{1,4}\s*$", txt):
+        if re.search(r"(\.\s*){2,}\s*\d+", txt) or re.search(r"\t\s*\d+\s*$", txt) or re.search(r"\s{3,}\d{1,4}\s*$", txt):
             continue
         is_head_style = any(k in style_l for k in _HEAD_STYLE_KEYS)
         if not (is_head_style or (_START_RE.match(txt) and len(txt) < 110)):

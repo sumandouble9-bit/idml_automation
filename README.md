@@ -1,7 +1,6 @@
-
 # IDML Automation Workflow: Production-Grade Dual-Language InDesign Book Publishing Pipeline
 
-A fully autonomous, industrial-grade publishing automation pipeline that transforms raw Adobe InDesign (`.idml`) manuscripts and EPUB packages into press-compliant, reference-matched print PDFs and standardized IDML books.
+A fully autonomous, industrial-grade publishing automation system that transforms raw Adobe InDesign (`.idml`) manuscripts and EPUB packages into press-compliant, reference-matched print PDFs and standardized IDML books.
 
 Engineered specifically for dual-language book production (**Spanish** and **English**), this repository automates typographic normalization, page geometry standardization, EPUB asset and caption injection, vertical gap elimination, rigid chapter top alignment, frontmatter balancing, and overset resolution with **zero footer collisions**, **zero dropped content**, and **correct two-page reader spreads**.
 
@@ -9,45 +8,135 @@ Engineered specifically for dual-language book production (**Spanish** and **Eng
 
 ## Table of Contents
 
-1. [Key Features & Architectural Guarantees](#key-features--architectural-guarantees)
-2. [End-to-End Pipeline Architecture](#end-to-end-pipeline-architecture)
-3. [Deep-Dive: Workflow Stages](#deep-dive-workflow-stages)
+1. [Architectural Overview & Clarifications](#architectural-overview--clarifications)
+   - [What is "Pipeline" vs "Book Workflow"?](#what-is-pipeline-vs-book-workflow)
+   - [Why was `core` duplicated previously? (Resolved)](#why-was-core-duplicated-previously-resolved)
+   - [Object-Oriented Programming (OOP) Architecture](#object-oriented-programming-oop-architecture)
+2. [Key Features & Production Guarantees](#key-features--production-guarantees)
+3. [End-to-End Workflow Architecture](#end-to-end-workflow-architecture)
+4. [Deep-Dive: Workflow Stages](#deep-dive-workflow-stages)
    - [Stage 1: Dual-Language Typography & Formatting](#stage-1-dual-language-typography--formatting)
    - [Stage 2: Document Setup & Trim Normalization](#stage-2-document-setup--trim-normalization)
    - [Stage 3: EPUB Asset Extraction & Image/Caption Injection](#stage-3-epub-asset-extraction--imagecaption-injection)
    - [Stage 3b: Text Bottom-Gap Filling](#stage-3b-text-bottom-gap-filling)
    - [Stage 3c: Chapter Top Spacing & Frontmatter Sequencing](#stage-3c-chapter-top-spacing--frontmatter-sequencing)
    - [Stage 4: Print PDF Export, Two-Page View & Integrity Gates](#stage-4-print-pdf-export-two-page-view--integrity-gates)
-4. [Publishing Specifications & Standard Matrix](#publishing-specifications--standard-matrix)
-5. [Repository Directory Structure](#repository-directory-structure)
-6. [Prerequisites & Installation](#prerequisites--installation)
-7. [Execution & CLI Guide](#execution--cli-guide)
-8. [Automated Quality Verification Suite](#automated-quality-verification-suite)
-9. [Technical Notes & Engineering Solutions](#technical-notes--engineering-solutions)
+5. [Recent Bug Fixes & Typographic Hardening](#recent-bug-fixes--typographic-hardening)
+   - [Fix 1: Extreme Word Spacing on Letter Signatures / Soft Breaks](#fix-1-extreme-word-spacing-on-letter-signatures--soft-breaks)
+   - [Fix 2: Chapter & Book Headings Ending with Years/Numbers Not Splitting](#fix-2-chapter--book-headings-ending-with-yearsnumbers-not-splitting)
+6. [Publishing Specifications & Standard Matrix](#publishing-specifications--standard-matrix)
+7. [Repository Directory Structure](#repository-directory-structure)
+8. [Prerequisites & Installation](#prerequisites--installation)
+9. [Execution & CLI Guide](#execution--cli-guide)
+10. [Automated Quality Verification Suite](#automated-quality-verification-suite)
 
 ---
 
-## Key Features & Architectural Guarantees
+## Architectural Overview & Clarifications
 
-- **Dual-Language Auto-Detection Engine**: Automatically inspects document XML stories and filenames to distinguish between Spanish and English manuscripts, routing each book to language-tailored typographic engines.
+### What is "Pipeline" vs "Book Workflow"?
+
+In book production software, a **pipeline** or **workflow** is an automated assembly line. Just like a physical printing press takes raw sheets of paper, prints pages, folds signatures, collates sections, inserts photo plates, binds the cover, and trims the edges in strict sequential stages:
+- **`book_workflow`** is the master assembly line engine.
+- Instead of running disconnected, ad-hoc python scripts by hand, the workflow passes each book systematically through 4 standardized, verifiable stages:
+  1. **Stage 1 (Formatting):** Typography, styles, and frontmatter.
+  2. **Stage 2 (Normalization):** Standardizing trim size (5.5 × 8.5 in), facing pages, bleeds, and margins.
+  3. **Stage 3 (Asset Injection):** Extracting figures and captions from EPUB archives and building tables.
+  4. **Stage 4 (Quality Audit & Export):** Automated preflight checks, InDesign COM PDF generation, and TOC page synchronization.
+
+The previous internal folder name `pipeline_engine` was renamed to **`book_workflow`** to provide an immediate, self-explanatory domain model for any publisher, engineer, or prepress operator.
+
+---
+
+### Why was `core` duplicated previously? (Resolved)
+
+In earlier iterations of the repository:
+1. `idml_automation_workflow/Scripts/core/` held 18 utility modules (XML handlers, typography postprocessors, TOC synchronizers, font managers, and ISBN lookup tables).
+2. `idml_automation_workflow/pipeline_engine/core/` was introduced during an initial refactoring attempt with only `indesign_app.py`.
+
+This caused confusion because developers could not tell which `core` package took precedence or where a new utility belonged.
+
+**The Solution:**
+All 19 core modules have been consolidated into a **single, unified package**:
+```text
+idml_automation_workflow/book_workflow/core/
+```
+The obsolete `Scripts/core/` and `pipeline_engine/core/` folders have been completely eliminated. All imports now resolve cleanly and predictably from `book_workflow.core`.
+
+---
+
+### Object-Oriented Programming (OOP) Architecture
+
+The codebase enforces clean **Object-Oriented Programming (OOP)** patterns with clear encapsulation, inheritance, and separation of concerns:
+
+#### 1. The Domain Model (`Book`)
+- **Class:** `book_workflow.models.Book` (`book_workflow/models/book.py`)
+- **Responsibility:** Encapsulates the entire lifecycle and state of a single book. Holds:
+  - `isbn`: Unique ISBN-13 identifier.
+  - `language`: Detected or assigned language (`"en"` or `"es"`).
+  - `raw_idml_path`, `formatted_idml_path`, `normalized_idml_path`, `final_idml_path`, `pdf_path`.
+  - `epub_path`: Discovered matching EPUB asset archive.
+  - `has_stage_completed(stage_name)`: State inquiry.
+
+#### 2. Workflow Path Registry (`WorkflowPaths`)
+- **Class:** `book_workflow.paths.WorkflowPaths` (`book_workflow/paths.py`)
+- **Responsibility:** Encapsulates directory resolution across environments, discovers input/output folders, and automatically registers internal subpackages into `sys.path`.
+
+#### 3. Abstract Stage Contract (`WorkflowStage`)
+- **Abstract Base Class:** `book_workflow.stages.base_stage.WorkflowStage`
+- **Interface:**
+  ```python
+  class WorkflowStage(ABC):
+      @property
+      @abstractmethod
+      def name(self) -> str: ...
+
+      @abstractmethod
+      def execute(self, book: Book) -> bool: ...
+
+      def can_skip(self, book: Book) -> bool: ...
+  ```
+- Concrete Implementations:
+  - `DocumentFormattingStage` (Stage 1)
+  - `DocumentNormalizationStage` (Stage 2)
+  - `AssetInjectionStage` (Stage 3)
+  - `QualityAuditAndExportStage` (Stage 4)
+
+#### 4. Master Orchestrator (`BookWorkflow`)
+- **Class:** `book_workflow.workflow.BookWorkflow` (`book_workflow/workflow.py`)
+- **Responsibility:** Coordinates stage execution across batches of books, handles language routing, provides progress reporting, and runs stage-by-stage or full end-to-end runs.
+
+#### 5. COM Lifecycle Context Manager (`InDesignApp`)
+- **Class:** `book_workflow.core.indesign_app.InDesignApp`
+- **Responsibility:** Encapsulates Adobe InDesign Windows COM automation using Python's context manager protocol (`__enter__` and `__exit__`), ensuring clean startup, document isolation, and guaranteed release of COM references without orphan processes.
+
+#### 6. Page Layout Hierarchy & Polymorphism
+- Base class `BasePage` in `book_workflow.formatting.base_page`.
+- Specialized page formatters: `TitlePage`, `CopyrightPage`, `AuthorPage`, `TableOfContentsPage`.
+- Language-specific subclasses (`TitlePageEN`, `TitlePageES`, `TocPageEN`, `TocPageES`, etc.) override formatting rules cleanly via polymorphism rather than nested procedural conditionals.
+
+---
+
+## Key Features & Production Guarantees
+
+- **Dual-Language Auto-Detection Engine**: Inspects document XML stories and filenames to distinguish Spanish from English manuscripts, routing each book to language-tailored typographic engines.
 - **Strict Frontmatter Sequencing**:
   - **Page 1 (Recto)**: Title Page (Master: *None*)
   - **Page 2 (Verso)**: Copyright & Legal Notice (Master: *None*, centered vertically)
-  - **Page 3 (Recto)**: About the Author / *Sobre la autorÃ­a* (Master: *None*)
+  - **Page 3 (Recto)**: About the Author / *Sobre la autoría* (Master: *None*)
   - **Page 4 (Verso)**: Blank separator page (Master: *None*)
   - **Page 5+ (Recto)**: Table of Contents / *Contenido* (Master: *None*)
   - **Post-TOC Balancing**: Dynamically balances trailing blank pages to guarantee that main body content (Chapter 1) begins strictly on an **ODD (Recto, Page 7)** page.
-- **Master Spread Assignment**: Pages 1â€“6 are isolated from master headers/footers (`AppliedMaster="n"`). Body content beginning on Page 7 is linked to `A-Master` with running headers and folios.
-- **Rigid Chapter Top Spacing**: All chapters across all titles start with a uniform **14.5 pt top gap** (`y0 = 86.04 pt`), eliminating heading displacement.
+- **Master Spread Isolation**: Frontmatter (Pages 1–6) is isolated from running headers and footers (`AppliedMaster="n"`). Body content beginning on Page 7 is linked to `A-Master`.
+- **Rigid Chapter Top Spacing**: All chapters start with a uniform **14.5 pt top gap** (`y0 = 86.04 pt`), eliminating heading displacement.
 - **Zero Footer Collisions (`maxB = 558 pt`)**: All body text frames are strictly capped above the running footer margin (`maxB = 558 pt`), preventing overlapping text.
 - **Zero Dropped Paragraphs (Threaded Page Extension)**: If terminal text frames overflow, the pipeline dynamically appends new pages with `A-Master` and threads the story cleanly to completion.
 - **Acrobat Two-Page Reader Spread Alignment**: PDF catalog `/PageLayout /TwoColumnRight` and InDesign `PageLayoutOptions.TWO_UP_FACING` ensure Adobe Acrobat displays Page 1 alone on the right (Cover/Recto) and Pages 2 & 3 as facing spreads.
 - **Dynamic TOC Page Synchronization**: Automatically reads actual starting page numbers from the generated PDF and updates the IDML Table of Contents with exact page numbers.
-- **Automatic ISBN Management & Standardized Renaming**: Integrates with master ISBN registries to format copyright pages and save standardized deliverables (`{Sr No.}_{Spanish Print ISBN-13}.idml` and `.pdf`).
 
 ---
 
-## End-to-End Pipeline Architecture
+## End-to-End Workflow Architecture
 
 ```mermaid
 flowchart TD
@@ -58,34 +147,33 @@ flowchart TD
         FONTS["Document Fonts<br/><code>Document fonts/</code>"]
     end
 
-    subgraph Step1 ["Stage 1: Dual-Language Typography & Formatting"]
-        DET{"Language Detector<br/><code>detect_book_language()</code>"}
-        EN_FMT["English Engine<br/><code>Scripts/pipeline.py</code>"]
-        ES_FMT["Spanish Engine<br/><code>Scripts/spanish/pipeline_es.py</code>"]
+    subgraph Step1 ["Stage 1: DocumentFormattingStage"]
+        DET{"Language Router<br/><code>Book.language</code>"}
+        EN_FMT["English Engine<br/><code>TypographyFormatterEN</code>"]
+        ES_FMT["Spanish Engine<br/><code>TypographyFormatterES</code>"]
         POST_TYPO["Typography Postprocessor<br/>Palatino 9.65pt / Gill Sans MT 16pt"]
     end
 
-    subgraph Step2 ["Stage 2: Trim & Geometry Normalization"]
+    subgraph Step2 ["Stage 2: DocumentNormalizationStage"]
         NORM["Trim Normalization<br/>5.5 x 8.5 in (396 x 612 pt)<br/>3mm Bleed, 36/54pt Margins"]
     end
 
-    subgraph Step3 ["Stage 3: Image Injection & Reflow"]
+    subgraph Step3 ["Stage 3: AssetInjectionStage"]
         INJECT["EPUB Asset Injection<br/>Figure Mapping & Captions<br/>LeafBound Logo & Overset Handling"]
         GAP_FILL["Stage 3b: Text Bottom-Gap Fill<br/>Reflow body lines to bottom margin"]
         CHAP_SPACING["Stage 3c: Chapter Top Spacing<br/>14.5pt Top Gap & Recto Sequencing"]
     end
 
-    subgraph Step4 ["Stage 4: PDF Export & Integrity Gates"]
+    subgraph Step4 ["Stage 4: QualityAuditAndExportStage"]
         GATE{"Integrity Audit Gate<br/>check_missing_paragraphs<br/>check_overset<br/>check_sidebyside"}
         REJECT["Rejected Files Vault<br/><code>rejected_files/</code>"]
-        PDF_EXP["Adobe InDesign COM Export<br/>maxB=558pt & Threaded Pages<br/>TwoColumnRight Catalog"]
+        PDF_EXP["InDesignApp COM Export<br/>maxB=558pt & Threaded Pages<br/>TwoColumnRight Catalog"]
         TOC_SYNC["TOC Page Synchronizer<br/><code>sync_idml_toc_from_pdf()</code>"]
     end
 
     subgraph Outputs ["5. Final Standardized Deliverables"]
         FINAL_PDF["Print-Ready PDFs<br/><code>final_output_files/pdf_files/</code>"]
         FINAL_IDML["Standardized IDMLs<br/><code>final_output_files/idml_files/</code>"]
-        SEQ_OUT["Sequenced Delivery<br/><code>sequenced_output/</code>"]
     end
 
     IDML --> DET
@@ -107,8 +195,6 @@ flowchart TD
     PDF_EXP --> TOC_SYNC
     TOC_SYNC --> FINAL_PDF
     TOC_SYNC --> FINAL_IDML
-    FINAL_PDF --> SEQ_OUT
-    FINAL_IDML --> SEQ_OUT
 ```
 
 ---
@@ -116,19 +202,9 @@ flowchart TD
 ## Deep-Dive: Workflow Stages
 
 ### Stage 1: Dual-Language Typography & Formatting
-**Core Scripts:**
-- `step1_format.py` / `run_unified_dual_pipeline.py`
-- `Scripts/pipeline.py` (English)
-- `Scripts/spanish/pipeline_es.py` (Spanish)
-- `Scripts/core/typography_postprocessor.py`
-- `Scripts/spanish/typography_postprocessor_es.py`
+**Class:** `DocumentFormattingStage` (`book_workflow/stages/formatting_stage.py`)
 
-#### Language Routing
-The document's stories are scanned for linguistic markers:
-- **Spanish Markers:** `capÃ­tulo`, `contenido`, `sobre la autorÃ­a`, `prÃ³logo`, `derechos de autor`, `por `
-- **English Markers:** `chapter`, `contents`, `about the author`, `preface`, `copyright`, `published by`, `by `
-
-#### Typography Rules
+- **Language Routing:** The book's stories are scanned for linguistic markers (`capítulo`, `contenido`, `sobre la autoría` vs `chapter`, `contents`, `about the author`).
 - **Body Text:** Standardized to **Palatino Linotype**, `PointSize = 9.65 pt`, `Leading = 12 pt`, justified alignment with first-line indent of `18 pt`.
 - **Chapter Headings:** Standardized to **Gill Sans MT**, `PointSize = 16 pt`, `Leading = 20 pt`, Bold, centered, with `KeepWithNext = 2` and `KeepLinesTogether = true`.
 - **Title Page:**
@@ -142,28 +218,18 @@ The document's stories are scanned for linguistic markers:
 ---
 
 ### Stage 2: Document Setup & Trim Normalization
-**Core Scripts:**
-- `step2_normalize.py`
-- `Scripts/pages/normalize_document_setup.py`
+**Class:** `DocumentNormalizationStage` (`book_workflow/stages/normalization_stage.py`)
 
 Standardizes physical page geometry across all documents regardless of incoming source format:
-- **Trim Size:** Standard US Trade 5.5 in Ã— 8.5 in (`396 pt Ã— 612 pt`).
+- **Trim Size:** Standard US Trade 5.5 in × 8.5 in (`396 pt × 612 pt`).
 - **Page Binding:** Facing Pages enabled (`DocumentPreferences.facingPages = true`).
-- **Margins:**
-  - Top Margin: `36 pt` (0.5 in)
-  - Bottom Margin: `54 pt` (0.75 in)
-  - Inside (Gutter) Margin: `36 pt` (0.5 in)
-  - Outside Margin: `36 pt` (0.5 in)
+- **Margins:** Top: `36 pt` (0.5 in), Bottom: `54 pt` (0.75 in), Inside: `36 pt` (0.5 in), Outside: `36 pt` (0.5 in).
 - **Bleed Settings:** 3 mm standard industrial print bleed (`8.504 pt` / `3 mm`).
 
 ---
 
 ### Stage 3: EPUB Asset Extraction & Image/Caption Injection
-**Core Scripts:**
-- `step3_inject_images.py`
-- `image_inject/inject_with_epub_captions.py`
-- `image_inject/epub_caption_apply.py`
-- `image_inject/fix_table_fit.py`
+**Class:** `AssetInjectionStage` (`book_workflow/stages/injection_stage.py`)
 
 Extracts high-resolution raster and vector graphics from source `.epub` archives and injects them into the IDML:
 - **Placeholder Replacement:** Replaces `###Insert` markup with native InDesign graphic rectangles.
@@ -174,7 +240,7 @@ Extracts high-resolution raster and vector graphics from source `.epub` archives
 ---
 
 ### Stage 3b: Text Bottom-Gap Filling
-**Core Script:** `fix_text_bottom_gap.py`
+**Module:** `fix_text_bottom_gap.py`
 
 Analyzes page balance across all body pages:
 - Identifies pages with premature paragraph breaks that leave awkward vertical white-space gaps before the bottom margin.
@@ -184,45 +250,52 @@ Analyzes page balance across all body pages:
 ---
 
 ### Stage 3c: Chapter Top Spacing & Frontmatter Sequencing
-**Core Scripts:**
-- `run_chapter_top_spacing.py`
-- `Scripts/core/chapter_top_spacing.py`
+**Module:** `book_workflow/core/chapter_top_spacing.py`
 
-#### Frontmatter Resequencing
-Rebuilds the frontmatter sequence to conform strictly to professional book publishing standards:
-1. **Page 1 (Recto)**: Title Page (Master: *None*)
-2. **Page 2 (Verso)**: Copyright Page (Master: *None*)
-3. **Page 3 (Recto)**: About the Author / *Sobre la autorÃ­a* (Master: *None*)
-4. **Page 4 (Verso)**: Blank Page (Master: *None*)
-5. **Page 5+ (Recto)**: Table of Contents / *Contenido* (Master: *None*)
-6. **Post-TOC Balancing**: If TOC ends on an odd page, leaves the next even page blank so body content starts on an **ODD (Recto, Page 7)** page.
-
-#### Chapter Heading Spacing & Idempotence
+- Rebuilds frontmatter sequence: Page 1 (Title), Page 2 (Copyright), Page 3 (About Author), Page 4 (Blank), Page 5 (TOC), Post-TOC balancing to guarantee Chapter 1 begins on an **ODD (Recto, Page 7)** page.
 - Inserts a top spacer paragraph with `SpaceBefore = 14.5 pt` so every chapter heading begins at exactly `y0 = 86.04 pt`.
-- **Idempotent Page Breaks:** Subsequent chapter spacers use `StartParagraph = "NextPage"` on the `ParagraphStyleRange` rather than character-level breaks (`ParagraphBreakType`). This guarantees that if a preceding chapter naturally fills a page down to the bottom margin, InDesign does **not** generate an accidental blank page.
+- **Idempotent Page Breaks:** Spacer uses `StartParagraph = "NextPage"` on the `ParagraphStyleRange` rather than character-level breaks.
 
 ---
 
 ### Stage 4: Print PDF Export, Two-Page View & Integrity Gates
-**Core Scripts:**
-- `step4_export_pdf.py`
-- `Scripts/convert_to_pdf.py`
-- `Scripts/core/toc_synchronizer.py`
+**Class:** `QualityAuditAndExportStage` (`book_workflow/stages/export_stage.py`)
 
-#### Adobe InDesign COM Automation
-Drives Adobe InDesign via Windows COM (`win32com.client`) with automated error recovery:
+- **InDesign COM Automation (`InDesignApp`):** Drives Adobe InDesign via Windows COM with automated error recovery.
 - **Font Activation:** Automatically loads fonts from `Document fonts/` to prevent font substitution.
-- **Text Frame Clamping (`maxB = 558 pt`)**: Geometric bounds are capped at `558 pt` to prevent colliding with running footers.
+- **Text Frame Clamping (`maxB = 558 pt`):** Geometric bounds are capped at `558 pt` to prevent colliding with running footers.
 - **Threaded Page Addition:** If text overflows after bounding-box adjustment, the pipeline adds new pages with `A-Master` and threads the story to completion.
+- **Reader Spread Layout (`TwoColumnRight`):** Configures PDF catalog `/PageLayout /TwoColumnRight` via PyMuPDF and `PageLayoutOptions.TWO_UP_FACING`.
+- **Dynamic TOC Synchronization:** Reads actual chapter heading page locations from the newly generated PDF and updates the IDML Table of Contents tab leaders, then re-exports the PDF so page numbers match the physical layout.
 
-#### Reader Spread Layout (`TwoColumnRight`)
-Configures the exported PDF catalog:
-- InDesign Export: `app.pdfExportPreferences.pageLayout = PageLayoutOptions.TWO_UP_FACING;`
-- PDF Catalog Patch: `doc.set_pagelayout("/TwoColumnRight")` via PyMuPDF.
-- **Result:** In Adobe Acrobat Two-Page view, Page 1 displays by itself on the right (Cover/Title), while Pages 2 & 3 display as facing pages.
+---
 
-#### Dynamic TOC Synchronization
-Reads actual chapter heading page locations from the newly generated PDF and updates the IDML Table of Contents tab leaders, then re-exports the PDF so page numbers match the physical layout.
+## Recent Bug Fixes & Typographic Hardening
+
+### Fix 1: Extreme Word Spacing on Letter Signatures / Soft Breaks
+- **Symptom:** In letters or signature blocks (e.g. `Signed:\u2028BLACHEVELLE...`), words and individual characters stretched across the entire width of the page with huge, unnatural gaps.
+- **Root Cause:** Procedural style enforcement in `test_cases/fix_paragraph_styles.py` forcefully reassigned right-aligned or multi-line signature paragraphs to standard `body_text` (`LEFT_JUSTIFIED`). When a paragraph contains soft line breaks (`\u2028`), InDesign's layout engine justifies every line before the soft break against both margins.
+- **Resolution:**
+  1. Updated `test_cases/fix_paragraph_styles.py` to preserve `RIGHT[k]` and `CENTER[k]` alignments and prohibit `LEFT_JUSTIFIED` or `FULLY_JUSTIFIED` on paragraphs containing soft breaks (`\u2028` or `\n`).
+  2. Updated `book_workflow/core/typography_postprocessor.py` line 912 to prevent applying `LeftJustified` to paragraphs with soft line breaks if already right- or center-aligned:
+     ```python
+     if _cur_just not in ("CenterAlign", "RightAlign"):
+         psr.set("Justification", "LeftAlign")
+     ```
+  3. Preserved right/center alignment in `book_workflow/formatting/typography/typography_en.py`.
+
+### Fix 2: Chapter & Book Headings Ending with Years/Numbers Not Splitting
+- **Symptom:** In *Les Misérables* (`9789370421240`), headings like `BOOK THIRD—IN THE YEAR 1817` and `CHAPTER I—THE YEAR 1817` stayed on a single line, whereas other headings (`BOOK SECOND—THE FALL`, `CHAPTER I—THE EVENING...`) split into two centered lines as expected.
+- **Root Cause:** In `book_workflow/core/chapter_heading_fix.py`, the regular expression used to skip Table of Contents page lines was:
+  ```python
+  re.search(r"\s\d{1,4}\s*$", txt)
+  ```
+  Because the heading ended with the year `1817` (a 4-digit number at the end of the line), the classifier misidentified the heading as a TOC entry and skipped the two-line split.
+- **Resolution:** Replaced the greedy match with strict TOC leader / tab detection:
+  ```python
+  re.search(r"(\.\s*){2,}\s*\d+", txt) or re.search(r"\t\s*\d+\s*$", txt) or re.search(r"\s{3,}\d{1,4}\s*$", txt)
+  ```
+  Headings ending in historical years (such as `1817`) are now correctly recognized as headings and split onto two centered lines separated by `\u2028`.
 
 ---
 
@@ -230,7 +303,7 @@ Reads actual chapter heading page locations from the newly generated PDF and upd
 
 | Specification | Target Value | Technical Implementation |
 |:---|:---|:---|
-| **Trim Size** | 5.5 Ã— 8.5 in (396 Ã— 612 pt) | `DocumentPreferences.pageWidth = 396`, `pageHeight = 612` |
+| **Trim Size** | 5.5 × 8.5 in (396 × 612 pt) | `DocumentPreferences.pageWidth = 396`, `pageHeight = 612` |
 | **Bleed** | 3 mm (8.504 pt) | `documentBleedTopOffset = 8.504 pt` (all sides) |
 | **Page Margins** | Top: 36 pt, Bottom: 54 pt, Inside: 36 pt, Outside: 36 pt | `MarginPreference` on Spread Pages |
 | **Body Font** | Palatino Linotype, Regular, 9.65 pt | `AppliedFont = "Palatino Linotype"`, `PointSize = 9.65`, `Leading = 12` |
@@ -248,71 +321,82 @@ Reads actual chapter heading page locations from the newly generated PDF and upd
 
 ```text
 idml_automation_workflow/
-â”œâ”€â”€ run_unified_dual_pipeline.py    # Master runner for end-to-end dual-language publishing
-â”œâ”€â”€ run_chapter_top_spacing.py      # Standalone runner for Chapter Top Spacing & Sequencing
-â”œâ”€â”€ normalize_docs.py               # Standalone runner for Document Setup Normalization
-â”œâ”€â”€ requirements.txt                # Python environment dependencies
-â”œâ”€â”€ Document fonts/                 # Embedded fonts (Palatino Linotype, Gill Sans MT, etc.)
-â”‚
-â”œâ”€â”€ input_files/                    # Input: Raw IDML manuscripts (English & Spanish)
-â”œâ”€â”€ epub_input_files/               # Input: Source EPUB packages (images & captions)
-â”‚
-â”œâ”€â”€ idml_automation_workflow/
-â”‚   â”œâ”€â”€ run_pipeline.py             # Pipeline execution entry point
-â”‚   â”œâ”€â”€ fix_text_bottom_gap.py      # Stage 3b: Bottom gap reflow engine
-â”‚   â”œâ”€â”€ measure_page_gaps.py        # Quality audit tool: measures page gaps and image bounds
-â”‚   â”‚
-â”‚   â”œâ”€â”€ Scripts/
-â”‚   â”‚   â”œâ”€â”€ convert_to_pdf.py       # Adobe InDesign COM export engine & overset resolver
-â”‚   â”‚   â”œâ”€â”€ pipeline.py             # English formatting coordinator
-â”‚   â”‚   â”œâ”€â”€ core/
-â”‚   â”‚   â”‚   â”œâ”€â”€ chapter_top_spacing.py      # 14.5pt chapter spacing & frontmatter sequencer
-â”‚   â”‚   â”‚   â”œâ”€â”€ typography_postprocessor.py # English typography normalization
-â”‚   â”‚   â”‚   â”œâ”€â”€ toc_synchronizer.py         # PDF-to-IDML TOC page number synchronizer
-â”‚   â”‚   â”‚   â”œâ”€â”€ isbn_manager.py             # ISBN lookup & metadata manager
-â”‚   â”‚   â”‚   â”œâ”€â”€ idml_utils.py               # Low-level IDML XML & zip manipulation helpers
-â”‚   â”‚   â”‚   â””â”€â”€ font_manager.py             # Font resolution and bundling
-â”‚   â”‚   â”œâ”€â”€ pages/
-â”‚   â”‚   â”‚   â”œâ”€â”€ document_setup.py           # Document geometry setup
-â”‚   â”‚   â”‚   â”œâ”€â”€ title_page.py               # Title page layout
-â”‚   â”‚   â”‚   â”œâ”€â”€ copyright_page.py           # Copyright page layout
-â”‚   â”‚   â”‚   â”œâ”€â”€ toc_page.py                 # Table of contents formatting
-â”‚   â”‚   â”‚   â”œâ”€â”€ author_page.py              # About the Author page layout
-â”‚   â”‚   â”‚   â””â”€â”€ normalize_document_setup.py # Page & text frame normalization
-â”‚   â”‚   â””â”€â”€ spanish/
-â”‚   â”‚       â”œâ”€â”€ pipeline_es.py                  # Spanish formatting coordinator
-â”‚   â”‚       â”œâ”€â”€ title_page_es.py                # Spanish title page ("Por" credit)
-â”‚   â”‚       â”œâ”€â”€ copyright_page_es.py            # Spanish legal notices & ISBNs
-â”‚   â”‚       â”œâ”€â”€ toc_page_es.py                  # Spanish "Contenido" TOC formatting
-â”‚   â”‚       â”œâ”€â”€ author_page_es.py               # Spanish "Sobre la autorÃ­a" formatting
-â”‚   â”‚       â”œâ”€â”€ typography_and_styles_es.py     # Spanish style definitions
-â”‚   â”‚       â””â”€â”€ typography_postprocessor_es.py  # Spanish typography normalization
-â”‚   â”‚
-â”‚   â”œâ”€â”€ image_inject/
-â”‚   â”‚   â”œâ”€â”€ inject_with_epub_captions.py    # EPUB image & caption injector
-â”‚   â”‚   â”œâ”€â”€ epub_caption_apply.py           # Caption parsing & association
-â”‚   â”‚   â”œâ”€â”€ fix_table_fit.py                # Table autofit and side-by-side reconstruction
-â”‚   â”‚   â”œâ”€â”€ fix_image_layout.py             # Image positioning & margin constraints
-â”‚   â”‚   â””â”€â”€ logo_inject.py                  # Publisher logo injector
-â”‚   â”‚
-â”‚   â”œâ”€â”€ test_cases/                         # Automated verification & audit gates
-â”‚   â”‚   â”œâ”€â”€ check_missing_paragraphs.py     # Reconciles text against original source
-â”‚   â”‚   â”œâ”€â”€ check_overset.py                # Detects overset text frames
-â”‚   â”‚   â”œâ”€â”€ check_sidebyside.py             # Verifies side-by-side image tables
-â”‚   â”‚   â”œâ”€â”€ check_caption.py                # Audits image caption styling
-â”‚   â”‚   â”œâ”€â”€ check_bleed.py                  # Verifies 3mm print bleeds
-â”‚   â”‚   â””â”€â”€ check_word_spacing_and_block.py # Scans for loose justification
-â”‚   â”‚
-â”‚   â”œâ”€â”€ Output/                             # Intermediate processing directory
-â”‚   â”‚   â”œâ”€â”€ Formatted/                      # Stage 1 formatted IDMLs
-â”‚   â”‚   â””â”€â”€ page_resize_output/             # Stage 2 normalized IDMLs
-â”‚   â”‚
-â”‚   â””â”€â”€ final_output_files/                 # Production output directory
-â”‚       â”œâ”€â”€ idml_files/                     # Production IDML documents
-â”‚       â”œâ”€â”€ pdf_files/                      # High-resolution print PDFs
-â”‚       â”œâ”€â”€ renamed_output_files/           # Standardized ISBN-named deliverables
-â”‚       â”œâ”€â”€ sequenced_output/               # Sequenced IDML & PDF archives
-â”‚       â””â”€â”€ rejected_files/                 # Quarantine folder for audit failures
+├── README.md                                # Master documentation
+├── run_book_pipeline.py                     # Root CLI runner (forwards to idml_automation_workflow/run_book_pipeline.py)
+├── input_files/                             # Input: Raw IDML manuscripts (English & Spanish)
+├── epub_input_files/                        # Input: Source EPUB packages (images & captions)
+├── Reference/                               # Reference layout templates
+├── Document fonts/                          # Embedded fonts (Palatino Linotype, Gill Sans MT, etc.)
+│
+└── idml_automation_workflow/
+    ├── README.md                            # Package documentation
+    ├── run_book_pipeline.py                 # Single Primary CLI runner (Book Production Workflow)
+    ├── fix_text_bottom_gap.py               # Stage 3b: Bottom gap reflow engine
+    ├── measure_page_gaps.py                 # Quality audit tool: measures page gaps
+    ├── pdf_export.py                        # PDF export module
+    │
+    ├── book_workflow/                       # Clean OOP Workflow Package (replaces pipeline_engine)
+    │   ├── __init__.py
+    │   ├── workflow.py                      # BookWorkflow master orchestrator class
+    │   ├── paths.py                         # WorkflowPaths registry
+    │   ├── book_discovery.py                # Discovers Book instances from input directories
+    │   │
+    │   ├── models/                          # Domain entity models
+    │   │   ├── __init__.py
+    │   │   └── book.py                      # Book domain model (ISBN, paths, status, language)
+    │   │
+    │   ├── stages/                          # OOP Stage implementations
+    │   │   ├── __init__.py
+    │   │   ├── base_stage.py                # Abstract WorkflowStage base class
+    │   │   ├── formatting_stage.py          # Stage 1: DocumentFormattingStage
+    │   │   ├── normalization_stage.py       # Stage 2: DocumentNormalizationStage
+    │   │   ├── injection_stage.py           # Stage 3: AssetInjectionStage
+    │   │   └── export_stage.py              # Stage 4: QualityAuditAndExportStage
+    │   │
+    │   ├── core/                            # Consolidated publishing core (no duplicate core)
+    │   │   ├── indesign_app.py              # InDesignApp COM context manager
+    │   │   ├── font_manager.py              # Font discovery & validation
+    │   │   ├── isbn_manager.py              # ISBN lookup & metadata manager
+    │   │   ├── idml_utils.py                # Low-level IDML XML & zip manipulation helpers
+    │   │   ├── typography_postprocessor.py  # Typography standardization & soft-break fixes
+    │   │   ├── chapter_heading_fix.py       # 2-line heading splitting (fixed year matching)
+    │   │   ├── chapter_top_spacing.py       # 14.5pt top gap & frontmatter sequencer
+    │   │   ├── toc_synchronizer.py          # PDF-to-IDML TOC page number synchronizer
+    │   │   └── ... (all 19 publishing core modules)
+    │   │
+    │   ├── config/                          # Language and pipeline configuration
+    │   │   ├── language_config.py
+    │   │   └── languages.py
+    │   │
+    │   └── formatting/                      # Modular typography & page formatters
+    │       ├── base_page.py                 # BasePage abstract class
+    │       ├── book_formatter.py            # Formatter coordinator
+    │       ├── title/                       # Title page implementations (EN & ES)
+    │       ├── copyright/                   # Copyright page implementations (EN & ES)
+    │       ├── author/                      # About the Author page implementations (EN & ES)
+    │       ├── table_of_contents/           # TOC page implementations (EN & ES)
+    │       └── typography/                  # Typography formatters (EN & ES)
+    │
+    ├── injection/                           # EPUB image extraction & caption injection
+    │   ├── inject_with_epub_captions.py
+    │   ├── epub_caption_apply.py
+    │   ├── fix_table_fit.py
+    │   └── logo_inject.py
+    │
+    ├── test_cases/                          # Automated quality audit verification suite
+    │   ├── audit.py                         # Master audit runner
+    │   ├── check_missing_paragraphs.py      # Reconciles text against original source
+    │   ├── check_overset.py                 # Detects overset text frames
+    │   ├── check_sidebyside.py              # Verifies side-by-side image tables
+    │   ├── check_caption.py                 # Audits image caption styling
+    │   ├── check_bleed.py                   # Verifies 3mm print bleeds
+    │   ├── check_word_spacing_and_block.py  # Scans for loose justification
+    │   └── fix_paragraph_styles.py          # Alignment guard & justification fix
+    │
+    └── final_output_files/                  # Production deliverable folder
+        ├── idml_files/                      # Standardized IDML deliverables
+        ├── pdf_files/                       # Print-ready PDFs
+        └── rejected_files/                  # Quarantine folder with audit failure reasons
 ```
 
 ---
@@ -321,8 +405,8 @@ idml_automation_workflow/
 
 ### System Requirements
 - **Operating System:** Windows 10 or Windows 11 (64-bit)
-- **Python:** Python 3.10+ (ensure `python` and `pip` are in system `PATH`)
-- **Desktop Application:** **Adobe InDesign 2024 or 2025** (installed and launched at least once to register COM Type Libraries)
+- **Python:** Python 3.10+ (ensure `python` and `pip` are on system `PATH`)
+- **Desktop Application:** **Adobe InDesign 2024 or 2025** (installed and run at least once to register Windows COM Type Libraries)
 
 ### Setup Instructions
 1. Clone the repository:
@@ -339,51 +423,37 @@ idml_automation_workflow/
 
 ## Execution & CLI Guide
 
-### 1. Unified Master Pipeline (Recommended)
-Processes all books through Stages 1, 2, 3, 3b, 3c, and 4 end-to-end:
+The single, unified command to run the complete publishing pipeline is **`run_book_pipeline.py`**. You can run it directly from the workspace root or from within the `idml_automation_workflow/` directory.
+
+### Running a Book (Recommended)
 
 ```powershell
-# Process all books in input_files/
-python run_unified_dual_pipeline.py
+# Run a single book end-to-end by ISBN or filename:
+python idml_automation_workflow/run_book_pipeline.py 9789370421240
 
-# Process a single book by identifier / ISBN:
-python run_unified_dual_pipeline.py --book 1353
+# Or from within the idml_automation_workflow/ folder:
+python run_book_pipeline.py 9789370421240
+```
+
+### Batch & Stage Execution Options
+
+```powershell
+# Process all books found in input_files/ end-to-end:
+python idml_automation_workflow/run_book_pipeline.py
+
+# Execute a specific stage only:
+python idml_automation_workflow/run_book_pipeline.py 9789370421240 --step 1   # Stage 1: Formatting
+python idml_automation_workflow/run_book_pipeline.py 9789370421240 --step 2   # Stage 2: Normalization
+python idml_automation_workflow/run_book_pipeline.py 9789370421240 --step 3   # Stage 3: Asset Injection
+python idml_automation_workflow/run_book_pipeline.py 9789370421240 --step 3b  # Stage 3b: Gap Fill
+python idml_automation_workflow/run_book_pipeline.py 9789370421240 --step 4   # Stage 4: PDF Export & Audit
 
 # Filter by language:
-python run_unified_dual_pipeline.py --lang es
-python run_unified_dual_pipeline.py --lang en
+python idml_automation_workflow/run_book_pipeline.py --lang es
+python idml_automation_workflow/run_book_pipeline.py --lang en
 
-# Force re-processing of all stages:
-python run_unified_dual_pipeline.py --force
-```
-
-### 2. Stage-by-Stage Execution
-
-```powershell
-# Stage 1: Typography & Formatting
-python run_unified_dual_pipeline.py --step 1
-
-# Stage 2: Document Setup & Geometry Normalization (5.5x8.5")
-python run_unified_dual_pipeline.py --step 2
-
-# Stage 3: EPUB Image & Caption Injection
-python run_unified_dual_pipeline.py --step 3
-
-# Stage 3b: Text Bottom-Gap Filling
-python run_unified_dual_pipeline.py --step 3b
-
-# Stage 3c: Chapter Top Spacing & Frontmatter Resequencing
-python run_unified_dual_pipeline.py --step 3c
-
-# Stage 4: High-Quality Print PDF Export & Integrity Audit
-python run_unified_dual_pipeline.py --step 4
-```
-
-### 3. Standalone Chapter Top Spacing Runner
-
-```powershell
-# Apply 14.5pt chapter spacing and Recto frontmatter sequencing in-place:
-python run_chapter_top_spacing.py path/to/book.idml --output-dir path/to/output --pdf
+# Force reprocessing even if intermediate files already exist:
+python idml_automation_workflow/run_book_pipeline.py 9789370421240 --force
 ```
 
 ---
@@ -392,27 +462,9 @@ python run_chapter_top_spacing.py path/to/book.idml --output-dir path/to/output 
 
 Before exporting production deliverables, documents pass through automated integrity gates located in `idml_automation_workflow/test_cases/`:
 
-- **Missing Paragraph Audit (`check_missing_paragraphs.py`)**: Reconciles the plain text of the output IDML against the original raw IDML to ensure **zero lost paragraphs**.
+- **Missing Paragraph Audit (`check_missing_paragraphs.py`)**: Reconciles the plain text of the output IDML against the original raw IDML to guarantee **zero lost paragraphs**.
 - **Overset Frame Detection (`check_overset.py`)**: Verifies that no text frames have remaining overset text (`tf.overflows == false`).
-- **Image Margins & Bleeds (`check_bleed.py`, `check_image_margins.py`)**: Checks that page items conform to the 3 mm bleed and stay within print margins.
+- **Word Spacing & Block Audit (`check_word_spacing_and_block.py`)**: Scans for loose justification, over-stretched word spacing, and unintended justification on signature lines.
 - **Side-by-Side Image Pairing (`check_sidebyside.py`)**: Confirms that paired EPUB figures are placed in two-column table layouts rather than stacked vertically.
 - **Caption Association (`check_caption.py`)**: Ensures every image is followed by its corresponding centered caption.
 - **Quarantine Handling**: Any book that fails an audit gate is routed to `final_output_files/rejected_files/` with a detailed `.reasons.txt` log.
-
----
-
-## Technical Notes & Engineering Solutions
-
-### 1. Idempotent Spacing vs Unconditional Breaks
-In Adobe InDesign IDML XML:
-- Setting `ParagraphBreakType="NextPage"` on a `CharacterStyleRange` is an **unconditional break command**. If preceding text fills a page down to the bottom margin, the spacer paragraph flows to the top of the next page, and its `ParagraphBreakType="NextPage"` triggers a second break, creating an unwanted blank page.
-- Setting `StartParagraph="NextPage"` on the `ParagraphStyleRange` is **idempotent**. If the paragraph is already at the top of a page, InDesign does not advance again. The subsequent chapter heading is set to `StartParagraph="Anywhere"` so it sits directly below the top spacer on that same page.
-
-### 2. XML Metadata vs Content Parsing
-When inspecting InDesign story XML, using `psr.itertext()` extracts text from child `<Properties>` elements (such as `<AppliedFont>Palatino Linotype</AppliedFont>` and `<Leading>12</Leading>`). The pipeline uses a strict `_get_text()` helper that parses only `<Content>` elements, preventing empty spacer paragraphs from being misidentified as having text.
-
-### 3. Acrobat Two-Page View & PDF Catalog
-Without explicit catalog preferences, Adobe Acrobat displays Page 1 on the left and Page 2 on the right in two-page view, shifting the spreads. The pipeline configures `/PageLayout /TwoColumnRight` via PyMuPDF and `PageLayoutOptions.TWO_UP_FACING` in InDesign export preferences, guaranteeing that Page 1 is displayed on the right as a cover page and Pages 2 and 3 form facing spreads.
-
-### 4. Overset Bounding Box Clamping
-To resolve text oversets without colliding with running footers, geometric bounds are strictly clamped to `maxB = 558 pt`. If content still overflows, the pipeline dynamically appends new pages with `A-Master` and threads the story to the added frames.

@@ -909,7 +909,7 @@ def postprocess_idml(idml_path: Path) -> dict:
                             # Verse, or any paragraph holding a soft line break ( ):
                             # these stretch badly when justified (unlike <Br> paragraph
                             # breaks). Keep centered if already centered, else ragged-left.
-                            if _cur_just in ("LeftJustified", "FullyJustified"):
+                            if _cur_just not in ("CenterAlign", "RightAlign"):
                                 psr.set("Justification", "LeftAlign")
                                 story_changed = True
                         elif "cent" not in _sl and _cur_just not in ("CenterAlign", "RightAlign"):

@@ -1,27 +1,20 @@
-"""InjectionStage: EPUB image & caption injection plus post-injection fixes.
-
-Faithfully reproduces run_step3_injection (image/caption injection via a
-subprocess that drives InDesign), run_step3d (chapter double-break fix) and
-run_step3b (text bottom-gap fill). Operates on the whole batch at once, so it
-overrides run() instead of the per-book loop.
-"""
+"""Stage 3: EPUB Asset, Image & Caption Injection via Adobe InDesign."""
 
 import os
 import subprocess
 import sys
+from pathlib import Path
 
-from .base import StageResult
+from .base_stage import WorkflowStage, StageResult
 
 
-class InjectionStage:
+class AssetInjectionStage(WorkflowStage):
+    """Stage 3: Injects figures, images, and captions from EPUB, resolves overset, and fills gaps."""
+
     name = "injection"
-    title = "STEP 3: EPUB IMAGE & CAPTION INJECTION (via Adobe InDesign)"
+    title = "STEP 3: EPUB ASSET, IMAGE & CAPTION INJECTION (via Adobe InDesign)"
 
-    def __init__(self, paths):
-        self.paths = paths
-
-    def _logo_path(self):
-        # First existing publisher-logo candidate, matching the original order.
+    def _logo_path(self) -> str:
         candidates = (
             self.paths.workflow_dir / "logo" / "LEAF-BOUND-trimmed.png",
             self.paths.workflow_dir / "logo" / "LEAF-BOUND.png",
@@ -32,14 +25,13 @@ class InjectionStage:
                 return str(candidate)
         return ""
 
-    def inject(self, books, force=False):
-        # Run the image/caption injection subprocess for the batch of books.
+    def inject(self, books, force=False) -> int:
         self.paths.final_idml_dir.mkdir(parents=True, exist_ok=True)
-        line = "=" * 70
-        print(f"\n{line}\n{self.title}")
-        print(f"Input directory:  {self.paths.norm_dir}")
-        print(f"EPUB directory:   {self.paths.epub_dir}")
-        print(f"Output directory: {self.paths.final_idml_dir}\n{line}")
+        self.print_header(
+            f"Input directory:  {self.paths.norm_dir}\n"
+            f"EPUB directory:   {self.paths.epub_dir}\n"
+            f"Output directory: {self.paths.final_idml_dir}"
+        )
 
         env = dict(os.environ)
         env["INJECT_INPUT"] = str(self.paths.norm_dir)
@@ -57,12 +49,11 @@ class InjectionStage:
         return result.returncode
 
     def fix_chapter_double_breaks(self, books):
-        # Remove the blank page before body chapters on the injected IDMLs.
         line = "=" * 70
         print(f"\n{line}\nSTEP 3d: CHAPTER DOUBLE-BREAK FIX (remove blank page before body chapters)")
         print(f"Target directory: {self.paths.final_idml_dir}\n{line}")
 
-        from core.chapter_break_fix import apply_to_idml as fix_chapter_breaks
+        from ..core.chapter_break_fix import apply_to_idml as fix_chapter_breaks
         stems = {book.stem for book in books}
         targets = [f for f in self.paths.final_idml_dir.glob("*_injected.idml")
                    if any(stem in f.name for stem in stems)]
@@ -74,7 +65,6 @@ class InjectionStage:
                 print(f"  {idml.name}: [!] chapter break fix failed: {exc}")
 
     def fill_bottom_gaps(self, books):
-        # Reflow body text down to the bottom margin on each injected IDML.
         line = "=" * 70
         print(f"\n{line}\nSTEP 3b: TEXT BOTTOM-GAP FILLING (Reflow body lines down to bottom margin)")
         print(f"Input/Output: {self.paths.final_idml_dir}\n{line}")
@@ -87,11 +77,14 @@ class InjectionStage:
             print(f"  Fixing bottom gap for: {book.stem}")
             subprocess.run([sys.executable, "-u", str(script), book.stem], env=env)
 
-    def run(self, books, force=False):
-        # Inject images/captions, then apply the chapter-break and gap-fill fixes.
+    def run(self, books: list, force: bool = False) -> StageResult:
         result = StageResult(self.name)
         code = self.inject(books, force=force)
         result.record(code == 0)
         self.fix_chapter_double_breaks(books)
         self.fill_bottom_gaps(books)
         return result
+
+
+# Alias
+InjectionStage = AssetInjectionStage

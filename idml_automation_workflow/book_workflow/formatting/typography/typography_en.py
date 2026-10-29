@@ -1390,7 +1390,12 @@ def process_stories(target_dir, book_name=None):
                 changed = True
             elif is_quote_style or has_soft_break:
                 psr.set("AppliedParagraphStyle", "ParagraphStyle/quotes_normal")
-                psr.set("Justification", "LeftAlign")  # Ragged-right: prevents InDesign word-stretching on \u2028
+                if any(k in pstyle.lower() for k in ["right", "signature", "signed"]) or psr.attrib.get("Justification") == "RightAlign":
+                    psr.set("Justification", "RightAlign")
+                elif any(k in pstyle.lower() for k in ["center", "centre"]) or psr.attrib.get("Justification") == "CenterAlign":
+                    psr.set("Justification", "CenterAlign")
+                else:
+                    psr.set("Justification", "LeftAlign")
                 psr.set("LeftIndent", "39.68503937007875")
                 psr.set("RightIndent", "39.68503937007875")
                 psr.set("FirstLineIndent", "0")
@@ -1409,7 +1414,7 @@ def process_stories(target_dir, book_name=None):
                 )
                 or (
                     any(k in pstyle.lower() for k in ["noindent", "body", "normal", "msonormal", "basic paragraph", "text", "style", "paragraph", "para"])
-                    and not any(k in pstyle.lower() for k in ["chapter_name", "sub-heading", "heading", "toc", "verso", "copy", "author", "caption", "quote", "block", "verse", "poem", "fig caption"])
+                    and not any(k in pstyle.lower() for k in ["chapter_name", "sub-heading", "heading", "toc", "verso", "copy", "author", "caption", "quote", "block", "verse", "poem", "fig caption", "right", "center", "centre"])
                 )
             ):
                 if ptxt.strip() and not ptxt.strip().startswith("###Insert"):
