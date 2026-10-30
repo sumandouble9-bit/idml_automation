@@ -2,7 +2,10 @@ import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "image_inject"))
 import win32com.client
-import fix_paragraph_styles
+try:
+    import paragraph_styles_format as fix_paragraph_styles
+except ImportError:
+    import fix_paragraph_styles
 
 JS = 1246973031
 

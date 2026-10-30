@@ -16,8 +16,8 @@
 #
 # Run this AFTER measure_page_gaps.py.
 #
-# Usage: python fix_text_bottom_gap.py            (all books)
-#        python fix_text_bottom_gap.py 9789361422768   (one book)
+# Usage: python text_bottom_gap_format.py            (all books)
+#        python text_bottom_gap_format.py 9789361422768   (one book)
 import os
 import sys
 import glob
@@ -33,10 +33,19 @@ import resolve_overset as rovs    # shared overset resolver (adds tail frames/pa
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_cases"))
 import text_gap_fill, caption_center, overset_resolve, image_refit
 import chapter_image_split
-import fix_justification
+try:
+    import justification_format as fix_justification
+except ImportError:
+    import fix_justification
 import sidebyside_images
-import fix_paragraph_styles
-import fix_table_center
+try:
+    import paragraph_styles_format as fix_paragraph_styles
+except ImportError:
+    import fix_paragraph_styles
+try:
+    import table_center_format as fix_table_center
+except ImportError:
+    import fix_table_center
 import epub_tools                 # build each book's image->caption map
 import epub_caption_apply         # re-centre captions as the FINAL step
 

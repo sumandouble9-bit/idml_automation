@@ -6,6 +6,7 @@ JS = 1246973031
 
 
 def _obj(keys):
+    """Formats a set of keys into a JavaScript object literal."""
     return "{" + ",".join('"%s":1' % k for k in keys if k) + "}"
 
 
@@ -58,8 +59,8 @@ for (var si = 0; si < doc.stories.length; si++){
 
 
 def run(app, epub_path):
-    # Re-apply EPUB paragraph alignment (center/right) and un-stick the block/quote
-    # style from normal paragraphs, driven dynamically by the book's own classes.
+    """Re-apply EPUB paragraph alignment (center/right) and un-stick the block/quote
+    style from normal paragraphs, driven dynamically by the book's own classes."""
     cls = epub_classes.extract(epub_path)
     js = (_JS.replace("__CENTER__", _obj(cls["center"]))
              .replace("__BLOCK__", _obj(cls["block"]))

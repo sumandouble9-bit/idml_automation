@@ -10,7 +10,7 @@ JS = 1246973031
 
 
 def _is_rpc_error(exc: Exception) -> bool:
-    # True if the exception is an InDesign COM hang/crash/modal condition worth restarting for.
+    """True if the exception is an InDesign COM hang/crash/modal condition worth restarting for."""
     s = str(exc).lower()
     return (
         "remote procedure call" in s
@@ -24,7 +24,7 @@ def _is_rpc_error(exc: Exception) -> bool:
 
 
 def restart_indesign(wait_seconds: int = 6):
-    # Force-kill InDesign, relaunch it, and return a fresh COM Application object.
+    """Force-kill InDesign, relaunch it, and return a fresh COM Application object."""
     print("  [restart] Killing InDesign.exe ...", flush=True)
     for proc in ("InDesign.exe", "Adobe Crash Processor.exe"):
         try:
@@ -51,7 +51,7 @@ def restart_indesign(wait_seconds: int = 6):
 
 
 def _break_poem_tables(app):
-    # Split poem/verse tables so they can break across pages instead of overflowing.
+    """Split poem/verse tables so they can break across pages instead of overflowing."""
     js = r'''
     var doc = app.activeDocument;
     var pageH = doc.documentPreferences.pageHeight;
@@ -98,7 +98,7 @@ def _break_poem_tables(app):
     return app.DoScript(js, JS)
 
 def _fix_tables_and_breakable(app):
-    # Resize table columns/insets to fit the text and mark rows breakable across pages.
+    """Resize table columns/insets to fit the text and mark rows breakable across pages."""
     js = r'''
     var doc = app.activeDocument;
     var oldRuler = doc.viewPreferences.rulerOrigin;
@@ -285,7 +285,7 @@ def _fix_tables_and_breakable(app):
     return app.DoScript(js, JS)
 
 def _fix_vertical(app):
-    # Reflow tables vertically so a tall table splits across pages rather than growing the frame.
+    """Reflow tables vertically so a tall table splits across pages rather than growing the frame."""
     js = r'''
     var doc = app.activeDocument;
     var oldRuler = doc.viewPreferences.rulerOrigin;
@@ -420,7 +420,7 @@ def _fix_vertical(app):
     return app.DoScript(js, JS)
 
 def _align_autogrow_cells(app):
-    # Left-align and auto-grow table cells so their text stays visible.
+    """Left-align and auto-grow table cells so their text stays visible."""
     js = r'''
     var doc = app.activeDocument;
     var J = Justification;
@@ -466,7 +466,7 @@ def _align_autogrow_cells(app):
     return app.DoScript(js, JS)
 
 def _hyphenate_overset_cells(app):
-    # Enable hyphenation in overset cells so long words break and the text fits.
+    """Enable hyphenation in overset cells so long words break and the text fits."""
     js = r'''
     var doc = app.activeDocument;
     var fixed = 0;
@@ -500,7 +500,7 @@ def _hyphenate_overset_cells(app):
     return app.DoScript(js, JS)
 
 def _center_narrow_tables(app):
-    # Center narrow left-aligned tables within the text column.
+    """Center narrow left-aligned tables within the text column."""
     js = r'''
     var doc = app.activeDocument;
     var oldRuler = doc.viewPreferences.rulerOrigin;
@@ -1028,7 +1028,7 @@ def fix_tables_in_doc(app):
 
 
 def _open_doc(app, idml_path):
-    # Open an IDML in InDesign with user interaction and redraw disabled.
+    """Open an IDML in InDesign with user interaction and redraw disabled."""
     js = f'''
     app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;
     app.scriptPreferences.enableRedraw = false;
@@ -1041,7 +1041,7 @@ def _open_doc(app, idml_path):
 
 
 def _export_and_close(app, out_path):
-    # Export the active document back to IDML and close it without saving.
+    """Export the active document back to IDML and close it without saving."""
     js = f'''
     var outFile = new File("{out_path.replace(chr(92), '/')}");
     app.activeDocument.exportFile(ExportFormat.INDESIGN_MARKUP, outFile);
@@ -1053,7 +1053,7 @@ def _export_and_close(app, out_path):
 
 
 def _collect_targets(target):
-    # Return the list of target IDML paths from a file or directory argument.
+    """Return the list of target IDML paths from a file or directory argument."""
     if os.path.isfile(target) and target.lower().endswith(".idml"):
         return [target]
     if os.path.isdir(target):
@@ -1063,7 +1063,7 @@ def _collect_targets(target):
 
 
 def main():
-    # Standalone entry point: run the table-fit passes over a file or folder of IDMLs.
+    """Standalone entry point: run the table-fit passes over a file or folder of IDMLs."""
     _HERE = os.path.dirname(os.path.abspath(__file__))
     default_in  = os.path.join(_HERE, "output_files", "idml_files")
     out_dir     = os.path.join(_HERE, "output_files", "table_output_file")
@@ -1157,3 +1157,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+format_tables_in_doc = fix_tables_in_doc

@@ -31,6 +31,9 @@ Safety & Multi-Book Protection:
 import copy
 import re
 import zipfile
+import tempfile
+import shutil
+import os
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -101,13 +104,18 @@ def _split_single_psr_at_br(psr: ET.Element):
             new_psr.append(c)
 
         has_soft_break = "\u2028" in p_txt
+        has_long_word = any(len(w) >= 25 for w in re.findall(r'[A-Za-z0-9]{25,}', p_txt))
         if has_soft_break:
-            # Short verse / quote lines must stay LeftAlign so InDesign never
-            # stretches spaces between words (preserves tight word spacing).
             new_psr.set("Justification", "LeftAlign")
             new_psr.set("FirstLineIndent", "0")
+        elif has_long_word:
+            new_psr.set("Justification", "LeftAlign")
+            new_psr.set("FirstLineIndent", "0")
+            new_psr.set("Hyphenation", "false")
+            for csr in new_psr.iter():
+                if _lname(csr.tag) == "CharacterStyleRange":
+                    csr.set("Tracking", "-20")
         else:
-            # Genuine body prose is justified with standard body indentation.
             new_psr.set("Justification", "LeftJustified")
             new_psr.set("FirstLineIndent", "18")
             new_psr.set("SpaceBefore", "1.5")
@@ -132,14 +140,14 @@ def split_compound_verse_and_prose(story_root: ET.Element) -> bool:
         if any(skip in style for skip in _SKIP_STYLES):
             continue
 
-        # Only process compound ranges holding multiple paragraphs (2+ <Br /> tags)
         brs = [c for c in psr.iter() if _lname(c.tag) == "Br"]
         if len(brs) <= 1:
             continue
 
-        # Only process if there is a soft break (\u2028) present in the text
         txt = "".join(c.text or "" for c in psr.iter() if _lname(c.tag) == "Content")
-        if "\u2028" not in txt:
+        has_soft_break = "\u2028" in txt
+        has_long_word = any(len(w) >= 25 for w in re.findall(r'[A-Za-z0-9]{25,}', txt))
+        if not has_soft_break and not has_long_word:
             continue
 
         parent = parent_map.get(psr)
@@ -186,10 +194,11 @@ def process_idml(idml_path: Path) -> bool:
                 modified = True
 
     if modified:
-        tmp_path = idml_path.with_suffix(".split_tmp.idml")
-        with zipfile.ZipFile(str(tmp_path), "w", zipfile.ZIP_DEFLATED) as zout:
+        tmp_fd, tmp_path_str = tempfile.mkstemp(suffix=".idml")
+        os.close(tmp_fd)
+        with zipfile.ZipFile(tmp_path_str, "w", zipfile.ZIP_DEFLATED) as zout:
             for n in names:
                 zout.writestr(n, data[n])
-        tmp_path.replace(idml_path)
+        shutil.move(tmp_path_str, str(idml_path))
 
     return modified

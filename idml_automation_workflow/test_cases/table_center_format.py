@@ -1,3 +1,8 @@
+"""Table centering formatting pass.
+
+Separates body text merged into a table paragraph and centers narrow tables within the column.
+"""
+
 JS = 1246973031
 
 _JS = r"""
@@ -40,28 +45,34 @@ for (var s = 0; s < doc.stories.length; s++){
     for (var t = 0; t < tbs.length; t++){
         try {
             var tb = tbs[t];
-            var hasImg = false;
-            for (var c0 = 0; c0 < tb.cells.length && !hasImg; c0++){ try { if (tb.cells[c0].allGraphics.length > 0) hasImg = true; } catch(eH){} }
-            if (hasImg) continue;
-
-            var story = tb.storyOffset.parentStory;
-            var idx = tb.storyOffset.index;
-            var para = tb.storyOffset.paragraphs[0];
-
-            if (String(para.contents).length > 2){                 // body text shares the table's paragraph
-                story.insertionPoints[idx + 1].contents = "\r";     // break right after the table marker
-                try {
-                    var bodyPara = story.characters[idx + 2].paragraphs[0];
-                    bodyPara.leftIndent = 0;
-                } catch(eB){}
-                split++;
-            }
-
-            var usable = usableWidthFor(tb);
-            try { var pg = tb.storyOffset.parentTextFrames[0].parentPage; var mw = marginWidth(pg); if (mw > 0 && usable > mw) usable = mw; } catch(eM){}
-            var leftover = usable - tblWidth(tb);
             var tpara = tb.storyOffset.paragraphs[0];
-            try { tpara.firstLineIndent = 0; } catch(eF){}
+            var chars = tpara.characters;
+            var tIdx = tb.storyOffset.index;
+            var afterTable = null;
+            if (tIdx < chars.length - 1){
+                var remaining = tpara.characters.itemByRange(tIdx + 1, chars.length - 1);
+                var remTxt = "";
+                try { remTxt = remaining.texts[0].contents.replace(/[\r\n\s]+/g, ""); } catch(eR){}
+                if (remTxt.length > 0){
+                    var insPt = tpara.insertionPoints[chars.length];
+                    afterTable = remTxt;
+                }
+            }
+            if (afterTable){
+                try {
+                    tb.storyOffset.insertionPoints[0].parentStory.characters.item(tIdx).insertionPoints[1].contents = "\r";
+                    split++;
+                    tpara = tb.storyOffset.paragraphs[0];
+                    var nextPara = tb.storyOffset.parentStory.characters.item(tIdx + 1).paragraphs[0];
+                    if (nextPara && nextPara.isValid){
+                        try { nextPara.leftIndent = 0; } catch(eI){}
+                        if (bodyStyle){ try { nextPara.appliedParagraphStyle = bodyStyle; } catch(eS){} }
+                    }
+                } catch(eSplit){}
+            }
+            var tw = tblWidth(tb);
+            var colW = usableWidthFor(tb);
+            var leftover = colW - tw;
             if (leftover >= MIN_SPACE){ try { tpara.leftIndent = leftover / 2; centered++; } catch(eC){} }
             else { try { tpara.leftIndent = 0; } catch(eZ){} }
         } catch(eT){}
@@ -73,7 +84,7 @@ doc.viewPreferences.rulerOrigin = oldRuler;
 
 
 def run(app):
-    # Separate body text that is merged into a table's paragraph into its own
-    # paragraph (at the margin), then centre narrow tables. Fixes both the table
-    # not centring and the following paragraph starting at the table's position.
+    """Separate body text that is merged into a table's paragraph into its own
+    paragraph (at the margin), then centre narrow tables. Fixes both the table
+    not centring and the following paragraph starting at the table's position."""
     return app.DoScript(_JS, JS)

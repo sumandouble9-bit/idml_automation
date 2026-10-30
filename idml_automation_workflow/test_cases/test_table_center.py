@@ -1,7 +1,10 @@
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import win32com.client
-import fix_table_center
+try:
+    import table_center_format as fix_table_center
+except ImportError:
+    import fix_table_center
 
 JS = 1246973031
 

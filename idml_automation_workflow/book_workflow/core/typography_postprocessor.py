@@ -624,10 +624,10 @@ def postprocess_idml(idml_path: Path) -> dict:
 
                 story_changed = False
                 try:
-                    from core.chapter_heading_fix import normalize_headings as _norm_head
+                    from core.chapter_heading_format import normalize_headings as _norm_head
                 except Exception:
                     try:
-                        from chapter_heading_fix import normalize_headings as _norm_head
+                        from chapter_heading_format import normalize_headings as _norm_head
                     except Exception:
                         _norm_head = None
                 if _norm_head is not None and _norm_head(sroot):
@@ -965,10 +965,10 @@ def postprocess_idml(idml_path: Path) -> dict:
                                                 story_changed = True
 
                 try:
-                    from core.justify_stretch_fix import fix_justify_stretch as _fjs
+                    from core.justify_stretch_format import fix_justify_stretch as _fjs
                 except Exception:
                     try:
-                        from justify_stretch_fix import fix_justify_stretch as _fjs
+                        from justify_stretch_format import fix_justify_stretch as _fjs
                     except Exception:
                         _fjs = None
                 if _fjs is not None and _fjs(sroot):

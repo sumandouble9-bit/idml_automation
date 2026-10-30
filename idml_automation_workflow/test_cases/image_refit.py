@@ -1,6 +1,9 @@
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "image_inject"))
-import fix_image_layout
+try:
+    import image_layout_format as fix_image_layout
+except ImportError:
+    import fix_image_layout
 
 JS = 1246973031
 

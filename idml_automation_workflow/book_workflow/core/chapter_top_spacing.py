@@ -657,17 +657,12 @@ def process_story(story_xml_content: bytes) -> tuple[bytes, bool, int]:
                 ET.SubElement(csr, "Br")
                 new_children.append(spacer_psr)
             else:
-                # Subsequent chapters: spacer with NextPage break, then heading starts Anywhere (below spacer)
                 spacer_psr = ET.Element("ParagraphStyleRange", {
                     "AppliedParagraphStyle": "ParagraphStyle/Normal",
+                    "StartParagraph": "NextPage",
                     "BlankPageSpacer": "true",
                     "BlankPageProtected": "true",
                 })
-                csr_break = ET.SubElement(spacer_psr, "CharacterStyleRange", {
-                    "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]",
-                    "ParagraphBreakType": "NextPage"
-                })
-                ET.SubElement(csr_break, "Br")
                 csr_spacer = ET.SubElement(spacer_psr, "CharacterStyleRange", {
                     "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]"
                 })
@@ -921,17 +916,12 @@ def resequence_frontmatter_story(story_xml_bytes: bytes) -> tuple[bytes, int]:
                 # Chapter 1 is preceded by chap1_top_spacer (added at Block 5)
                 seen_first_chapter = True
             else:
-                # Subsequent chapters: insert spacer with NextPage break + \u2028
                 sub_spacer = ET.Element("ParagraphStyleRange", {
                     "AppliedParagraphStyle": "ParagraphStyle/Normal",
+                    "StartParagraph": "NextPage",
                     "BlankPageSpacer": "true",
                     "BlankPageProtected": "true",
                 })
-                csr_break = ET.SubElement(sub_spacer, "CharacterStyleRange", {
-                    "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]",
-                    "ParagraphBreakType": "NextPage"
-                })
-                ET.SubElement(csr_break, "Br")
                 csr_spacer = ET.SubElement(sub_spacer, "CharacterStyleRange", {
                     "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]"
                 })

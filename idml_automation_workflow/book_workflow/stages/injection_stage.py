@@ -53,10 +53,10 @@ class AssetInjectionStage(WorkflowStage):
         print(f"\n{line}\nSTEP 3d: CHAPTER DOUBLE-BREAK FIX (remove blank page before body chapters)")
         print(f"Target directory: {self.paths.final_idml_dir}\n{line}")
 
-        from ..core.chapter_break_fix import apply_to_idml as fix_chapter_breaks
+        from ..core.chapter_break_format import apply_to_idml as fix_chapter_breaks
         stems = {book.stem for book in books}
-        targets = [f for f in self.paths.final_idml_dir.glob("*_injected.idml")
-                   if any(stem in f.name for stem in stems)]
+        targets = [f for f in self.paths.final_idml_dir.glob("*.idml")
+                   if any(stem in f.name for stem in stems) and not f.name.endswith(".tmp")]
         for idml in targets:
             try:
                 fixed = fix_chapter_breaks(idml)
@@ -72,7 +72,7 @@ class AssetInjectionStage(WorkflowStage):
         env = dict(os.environ)
         env["GAPFIX_INPUT"] = str(self.paths.final_idml_dir)
         env["GAPFIX_OUTPUT"] = str(self.paths.final_idml_dir)
-        script = self.paths.workflow_dir / "fix_text_bottom_gap.py"
+        script = self.paths.workflow_dir / "text_bottom_gap_format.py"
         for book in books:
             print(f"  Fixing bottom gap for: {book.stem}")
             subprocess.run([sys.executable, "-u", str(script), book.stem], env=env)

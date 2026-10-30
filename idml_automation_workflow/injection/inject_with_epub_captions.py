@@ -10,9 +10,15 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # The table-fitting module lives in the sibling table/ package; add it to the path.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "table"))
-import fix_image_layout
+try:
+    import image_layout_format as fix_image_layout
+except ImportError:
+    import fix_image_layout
 import logo_inject
-import fix_table_fit
+try:
+    import table_fit_format as fix_table_fit
+except ImportError:
+    import fix_table_fit
 import epub_tools
 import epub_caption_apply
 

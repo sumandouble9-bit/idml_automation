@@ -160,7 +160,7 @@ def convert_single_idml(app, idml_path: Path, output_pdf_path: Path) -> dict:
                 try {{ _bs.justification = Justification.LEFT_JUSTIFIED; }} catch(e1) {{}}
                 try {{ _bs.hyphenation = true; }} catch(e2) {{}}
                 try {{ _bs.minimumWordSpacing = 80; _bs.desiredWordSpacing = 100; _bs.maximumWordSpacing = 120; }} catch(e3) {{}}
-                try {{ _bs.minimumLetterSpacing = 0; _bs.desiredLetterSpacing = 0; _bs.maximumLetterSpacing = 0; }} catch(e4) {{}}
+                try {{ _bs.minimumLetterSpacing = -2; _bs.desiredLetterSpacing = 0; _bs.maximumLetterSpacing = 5; }} catch(e4) {{}}
             }}
         }}
         var _justRag = ["quotes_normal","block1","block","block2","verse","poem"];

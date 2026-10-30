@@ -166,8 +166,8 @@ def remove_image_table_borders(app):
     return app.DoScript(js, JS)
 
 
-def fix_image_layout(app):
-    # Re-fit any image that overflows its margin box back within the text column.
+def format_image_layout(app):
+    """Re-fit any image that overflows its margin box back within the text column."""
     js = r'''
     var doc = app.activeDocument;
     var oldRuler = doc.viewPreferences.rulerOrigin;
@@ -487,3 +487,6 @@ def center_images_in_cells(app):
     "CELL_IMAGES_CENTERED=" + fixed;
     '''
     return app.DoScript(js, JS)
+
+
+fix_image_layout = format_image_layout

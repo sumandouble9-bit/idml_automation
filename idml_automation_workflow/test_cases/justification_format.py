@@ -1,8 +1,12 @@
+"""Style-level justification formatting pass.
+
+ONE lightweight pass (no per-paragraph loop) so it never hangs
+InDesign on large docs. Setting the style justifies every body paragraph that has
+no explicit override; verse paragraphs keep their own LeftAlign override.
+"""
+
 JS = 1246973031
 
-# Style-level only: ONE lightweight pass (no per-paragraph loop) so it never hangs
-# InDesign on large docs. Setting the style justifies every body paragraph that has
-# no explicit override; verse paragraphs keep their own LeftAlign override.
 _JS = r"""
 var d = app.activeDocument;
 var BODY = {"body_text":1,"noindent":1,"Normal":1,"quotes_normal":1,"noindentj":1,"noindent1":1,"bodytext_noendent":1};
