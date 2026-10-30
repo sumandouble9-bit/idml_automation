@@ -6,6 +6,8 @@ rejected_files/
 extracted_images/
 page_resize_output/
 .vscode/
+.claude/
+.gemini/
 
 # Ignore output IDML files and reports
 Output/
