@@ -150,6 +150,28 @@ def convert_single_idml(app, idml_path: Path, output_pdf_path: Path) -> dict:
             try {{ pFig.appliedFont = "Palatino Linotype"; }} catch(eF) {{}}
             try {{ pFig.pointSize = 9; }} catch(eS) {{}}
         }}
+
+        // Clear overrides on body paragraphs to remove '+' override symbol and enforce 9.65pt
+        var bodyLookup = {{}};
+        for (var bi = 0; bi < bodyStyles.length; bi++) {{ bodyLookup[bodyStyles[bi]] = true; }}
+        for (var s = 0; s < doc.stories.length; s++) {{
+            var _st = doc.stories[s];
+            for (var p = 0; p < _st.paragraphs.length; p++) {{
+                try {{
+                    var par = _st.paragraphs[p];
+                    var sName = par.appliedParagraphStyle ? par.appliedParagraphStyle.name : "";
+                    if (bodyLookup[sName]) {{
+                        try {{ par.clearOverrides(OverrideType.CHARACTER_ONLY); }} catch(eCO) {{}}
+                        try {{
+                            if (Math.abs(par.pointSize - 9.65) > 0.05) {{
+                                par.pointSize = 9.65;
+                                par.leading = 12;
+                            }}
+                        }} catch(ePS) {{}}
+                    }}
+                }} catch(ePar) {{}}
+            }}
+        }}
     }} catch(eSty) {{}}
 
     try {{

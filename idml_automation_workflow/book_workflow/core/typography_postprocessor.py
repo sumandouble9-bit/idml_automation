@@ -919,6 +919,10 @@ def postprocess_idml(idml_path: Path) -> dict:
                         psr.set("KeepFirstAndLastLines", "true")
                         psr.set("MinLinesAtStart", "2")
                         psr.set("MinLinesAtEnd", "2")
+                        if "PointSize" in psr.attrib:
+                            del psr.attrib["PointSize"]
+                        if "Leading" in psr.attrib:
+                            del psr.attrib["Leading"]
 
                         for csr in psr.iter():
                             if lname(csr.tag) == "CharacterStyleRange":
@@ -927,9 +931,38 @@ def postprocess_idml(idml_path: Path) -> dict:
                                 is_italic = "italic" in cstyle.lower()
                                 if not is_bold and not is_italic:
                                     csr.set("FontStyle", "Regular")
+
+                                # Clean runaway Subscript / Superscript overrides
                                 pos = csr.attrib.get("Position", "")
-                                if pos not in ("Superscript", "Subscript"):
-                                    _ensure_csr_font(csr, "Palatino Linotype", point_size="9.65", leading="12")
+                                if pos in ("Subscript", "Superscript"):
+                                    raw_text = "".join(e.text or "" for e in csr.iter() if lname(e.tag) == "Content")
+                                    c_txt = raw_text.strip()
+                                    is_runaway = False
+                                    if not c_txt:
+                                        is_runaway = True
+                                    elif pos == "Superscript":
+                                        is_note = bool(re.match(r"^\[?\d{1,5}[a-z]?\]?$", c_txt)) or c_txt.lower() in ("*", "†", "‡", "§", "#", "st", "nd", "rd", "th", "d", "e", "er", "re", "°")
+                                        if not is_note:
+                                            is_runaway = True
+                                    elif pos == "Subscript":
+                                        is_sub = bool(re.match(r"^\d{1,3}$", c_txt)) or c_txt.lower() in ("ab", "x1", "x2", "t1", "t2")
+                                        if not is_sub:
+                                            is_runaway = True
+
+                                    if is_runaway:
+                                        del csr.attrib["Position"]
+                                        pos = ""
+                                        stats["runaway_sub_sup_cleaned"] = stats.get("runaway_sub_sup_cleaned", 0) + 1
+                                        story_changed = True
+
+                                # Fix rogue language tags
+                                if csr.attrib.get("AppliedLanguage") in ("$ID/Arabic", "$ID/Hebrew"):
+                                    del csr.attrib["AppliedLanguage"]
+                                    story_changed = True
+
+                                # Ensure body text font and 9.65pt size on all body text
+                                _ensure_csr_font(csr, "Palatino Linotype", point_size="9.65", leading="12")
+
                                 # Strip rogue underline from body text paragraphs
                                 if csr.attrib.get("Underline") == "true":
                                     c_txt = "".join(e.text or "" for e in csr.iter() if lname(e.tag) == "Content")

@@ -618,7 +618,11 @@ def enforce_text_size(app, size=9.65):
                 for (var c = 0; c < tb.cells.length; c++){
                     try {
                         var cps = tb.cells[c].paragraphs;
-                        for (var p = 0; p < cps.length; p++){ try { cps[p].pointSize = SZ; } catch (eP) {} }
+                        for (var p = 0; p < cps.length; p++){
+                            try { cps[p].clearOverrides(OverrideType.CHARACTER_ONLY); } catch (eCO) {}
+                            try { cps[p].pointSize = SZ; } catch (eP) {}
+                            try { cps[p].leading = 12; } catch (eL) {}
+                        }
                         n++;
                     } catch (eC) {}
                 }

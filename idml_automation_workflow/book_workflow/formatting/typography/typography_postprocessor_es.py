@@ -985,7 +985,7 @@ def postprocess_idml_es(idml_path: Path) -> dict:
                                         is_runaway = True
                                     elif pos == "Subscript" and not c_txt.isdigit():
                                         is_runaway = True
-                                    elif pos == "Superscript" and not (c_txt.isdigit() or c_txt in ("*", "†", "‡", "§", "er", "o", "a", "os", "as")):
+                                    elif pos == "Superscript" and not (bool(re.match(r"^\[?\d{1,5}[a-z]?\]?$", c_txt)) or c_txt in ("*", "†", "‡", "§", "#", "er", "o", "a", "os", "as", "°")):
                                         is_runaway = True
 
                                     if is_runaway:
@@ -993,6 +993,10 @@ def postprocess_idml_es(idml_path: Path) -> dict:
                                         pos = ""
                                         stats["runaway_sub_sup_cleaned"] += 1
                                         story_changed = True
+
+                                if csr.attrib.get("AppliedLanguage") in ("$ID/Arabic", "$ID/Hebrew"):
+                                    del csr.attrib["AppliedLanguage"]
+                                    story_changed = True
 
                                 # 2. Enforce Palatino Linotype 9.65pt on body text
                                 if pos not in ("Superscript", "Subscript"):
