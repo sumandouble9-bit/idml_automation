@@ -1,14 +1,11 @@
 import copy
+import os
 import re
 import shutil
 import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
-
-
-def lname(tag):
-    return tag.rsplit("}", 1)[-1]
 
 
 def _is_true_verse_txt(txt):
@@ -36,6 +33,9 @@ def _soft_break_would_stretch(txt):
 
 
 
+
+def lname(tag):
+    return tag.rsplit("}", 1)[-1]
 
 
 def _psr_lines(psr):
@@ -70,98 +70,6 @@ def _is_verse_psr(psr):
 _SEPARATORS = ("*", "**", "***", "* * *", "*  *  *", "* * * * *", "⁂", "---", "— —")
 
 
-def _has_graphic(el):
-    """True if the element contains an anchored image/page item (empty-text but not blank)."""
-    for d in el.iter():
-        if lname(d.tag) in ("Rectangle", "Image", "EPS", "PDF", "Polygon",
-                             "Oval", "GraphicLine", "Group", "PICT", "WMF", "ImportedPage"):
-            return True
-    return False
-
-
-_HEADING_HINTS = ("chapter_name", "after_chapter_name_heading", "sub-heading", "master_chapter")
-
-
-def _prev_is_heading(psr, parent_map):
-    """True if the nearest preceding non-blank paragraph is itself a heading, i.e. this
-    heading is a continuation (same EPUB h1 id) that must stay on the same page."""
-    parent = parent_map.get(psr)
-    if parent is None:
-        return False
-    try:
-        idx = list(parent).index(psr)
-    except ValueError:
-        return False
-    k = idx - 1
-    while k >= 0:
-        prev = list(parent)[k]
-        if lname(prev.tag) != "ParagraphStyleRange":
-            k -= 1
-            continue
-        txt = "".join(c.text or "" for c in prev.iter() if lname(c.tag) == "Content").strip()
-        if not txt and not _has_graphic(prev):
-            k -= 1
-            continue
-        sty = (prev.get("AppliedParagraphStyle") or "").lower()
-        return any(h in sty for h in _HEADING_HINTS)
-    return False
-
-
-def _is_first_chapter_heading(psr, parent_map):
-    """True if this chapter heading is Chapter 1 (the initial content chapter),
-    meaning no body text has appeared after the front matter/TOC before this heading."""
-    parent = parent_map.get(psr) if parent_map else None
-    if parent is None:
-        return False
-    try:
-        idx = list(parent).index(psr)
-    except ValueError:
-        return False
-    k = idx - 1
-    while k >= 0:
-        prev = list(parent)[k]
-        k -= 1
-        if lname(prev.tag) != "ParagraphStyleRange":
-            continue
-        if _is_blank_page_spacer(prev):
-            continue
-        txt = "".join(c.text or "" for c in prev.iter() if lname(c.tag) == "Content").strip()
-        if not txt and not _has_graphic(prev):
-            continue
-        sty = (prev.get("AppliedParagraphStyle") or "").lower()
-        if any(h in sty for h in _HEADING_HINTS) or "chapter" in sty:
-            continue
-        if any(t in sty for t in ("toc", "content", "about", "author")):
-            return True
-        if "body" in sty or "quote" in sty or len(txt) > 40:
-            return False
-    return True
-
-
-def _has_preceding_page_spacer(psr, parent_map):
-    """True if this heading is preceded by an intentional page spacer (e.g. BlankPageSpacer with NextPage / \u2028)."""
-    parent = parent_map.get(psr) if parent_map else None
-    if parent is None:
-        return False
-    try:
-        idx = list(parent).index(psr)
-    except ValueError:
-        return False
-    k = idx - 1
-    while k >= 0:
-        prev = list(parent)[k]
-        if lname(prev.tag) != "ParagraphStyleRange":
-            k -= 1
-            continue
-        if _is_blank_page_spacer(prev):
-            return True
-        txt = "".join(c.text or "" for c in prev.iter() if lname(c.tag) == "Content").strip()
-        if txt or _has_graphic(prev):
-            return False
-        k -= 1
-    return False
-
-
 def _ensure_csr_font(csr, font_name="Palatino Linotype", point_size="9.65", leading="12"):
     """Sets font family, point size, and leading on a CharacterStyleRange."""
     csr.set("PointSize", str(point_size))
@@ -169,16 +77,19 @@ def _ensure_csr_font(csr, font_name="Palatino Linotype", point_size="9.65", lead
     if props is None:
         props = ET.Element(csr.tag.replace("CharacterStyleRange", "Properties"))
         csr.insert(0, props)
-    af = next((c for c in props if lname(c.tag) == "AppliedFont"), None)
-    if af is None:
-        af = ET.Element(props.tag.replace("Properties", "AppliedFont"), {"type": "string"})
-        props.append(af)
+    for af_el in list(props):
+        if lname(af_el.tag) == "AppliedFont":
+            props.remove(af_el)
+    af = ET.Element(props.tag.replace("Properties", "AppliedFont"), {"type": "string"})
     af.text = font_name
-    ld = next((c for c in props if lname(c.tag) == "Leading"), None)
-    if ld is None:
+    props.append(af)
+    if leading is not None:
+        for ld_el in list(props):
+            if lname(ld_el.tag) == "Leading":
+                props.remove(ld_el)
         ld = ET.Element(props.tag.replace("Properties", "Leading"), {"type": "unit"})
+        ld.text = str(leading)
         props.append(ld)
-    ld.text = str(leading)
 
 
 def _ensure_pstyle_font(ps, font_name="Palatino Linotype", point_size="9.65", leading="12"):
@@ -188,25 +99,79 @@ def _ensure_pstyle_font(ps, font_name="Palatino Linotype", point_size="9.65", le
     if props is None:
         props = ET.Element(ps.tag.replace("ParagraphStyle", "Properties"))
         ps.insert(0, props)
-    af = next((c for c in props if lname(c.tag) == "AppliedFont"), None)
-    if af is None:
-        af = ET.Element(props.tag.replace("Properties", "AppliedFont"), {"type": "string"})
-        props.append(af)
+    for af_el in list(props):
+        if lname(af_el.tag) == "AppliedFont":
+            props.remove(af_el)
+    af = ET.Element(props.tag.replace("Properties", "AppliedFont"), {"type": "string"})
     af.text = font_name
-    ld = next((c for c in props if lname(c.tag) == "Leading"), None)
-    if ld is None:
+    props.append(af)
+    if leading is not None:
+        for ld_el in list(props):
+            if lname(ld_el.tag) == "Leading":
+                props.remove(ld_el)
         ld = ET.Element(props.tag.replace("Properties", "Leading"), {"type": "unit"})
+        ld.text = str(leading)
         props.append(ld)
-    ld.text = str(leading)
 
 
 CHAP_KW_PATTERN = re.compile(
-    r"\b(?:chapter|book|part|act|scene|section|cap[íi]tulo|parte|libro|acto|secci[óo]n|"
-    r"index|[íi]ndice|indice|preface|prefacio|foreword|prologue|pr[óo]logo|introduction|introducci[óo]n|"
-    r"conclusion|conclusi[óo]n|epilogue|ep[íi]logo|appendix|ap[ée]ndice|glossary|glosario|"
-    r"bibliography|bibliograf[íi]a|notes?|notas?|advertisement|notice|dedication)\b",
+    r"\b(?:cap[íi]tulo|chapter|parte|part|libro|book|acto|act|secci[óo]n|section|[íi]ndice|indice|"
+    r"prefacio|preface|pr[óo]logo|prologo|introducci[óo]n|introduccion|conclusi[óo]n|conclusion|"
+    r"ep[íi]logo|epilogue|ap[ée]ndice|appendix|glosario|glossary|bibliograf[íi]a|bibliography|"
+    r"notas?|notes?|advertencia|dedicatoria)\b",
     re.I,
 )
+
+
+def _prev_is_heading(psr, parent_map):
+    parent = parent_map.get(psr) if parent_map else None
+    if parent is None:
+        return False
+    try:
+        idx = list(parent).index(psr)
+    except ValueError:
+        return False
+    k = idx - 1
+    while k >= 0:
+        prev = list(parent)[k]
+        k -= 1
+        if lname(prev.tag) != "ParagraphStyleRange":
+            continue
+        txt = "".join(c.text or "" for c in prev.iter() if lname(c.tag) == "Content").strip()
+        if not txt and not _has_graphic(prev):
+            continue
+        sty = (prev.get("AppliedParagraphStyle") or "").lower()
+        return "chapter" in sty or "heading" in sty
+    return False
+
+
+def _is_first_chapter_heading(psr, parent_map):
+    parent = parent_map.get(psr) if parent_map else None
+    if parent is None:
+        return False
+    try:
+        idx = list(parent).index(psr)
+    except ValueError:
+        return False
+    k = idx - 1
+    while k >= 0:
+        prev = list(parent)[k]
+        k -= 1
+        if lname(prev.tag) != "ParagraphStyleRange":
+            continue
+        if _is_blank_page_spacer(prev):
+            continue
+        txt = "".join(c.text or "" for c in prev.iter() if lname(c.tag) == "Content").strip()
+        if not txt and not _has_graphic(prev):
+            continue
+        sty = (prev.get("AppliedParagraphStyle") or "").lower()
+        if "chapter" in sty or "heading" in sty:
+            continue
+        if any(t in sty for t in ("toc", "content", "about", "author")):
+            return True
+        if "body" in sty or "quote" in sty or len(txt) > 40:
+            return False
+    return True
 
 
 def _is_blank_page_spacer(elem):
@@ -232,6 +197,30 @@ def _is_blank_page_spacer(elem):
         c_ld = c.attrib.get("Leading", "")
         if (c_pbt == "NextPage" or c_sp == "NextPage") and (c_pts == "0.1" or c_ld == "0.1"):
             return True
+    return False
+
+
+def _has_preceding_page_spacer(psr, parent_map):
+    """True if this heading is preceded by an intentional page spacer (e.g. BlankPageSpacer with NextPage / \u2028)."""
+    parent = parent_map.get(psr) if parent_map else None
+    if parent is None:
+        return False
+    try:
+        idx = list(parent).index(psr)
+    except ValueError:
+        return False
+    k = idx - 1
+    while k >= 0:
+        prev = list(parent)[k]
+        if lname(prev.tag) != "ParagraphStyleRange":
+            k -= 1
+            continue
+        if _is_blank_page_spacer(prev):
+            return True
+        txt = "".join(c.text or "" for c in prev.iter() if lname(c.tag) == "Content").strip()
+        if txt or _has_graphic(prev):
+            return False
+        k -= 1
     return False
 
 
@@ -354,8 +343,226 @@ def _split_grouped_chapters(story_root):
     return changed
 
 
-def postprocess_idml(idml_path: Path) -> dict:
-    """Post-processes an IDML package to ensure typography and footer consistency."""
+def realign_spreads_es(tmp_dir: Path, stats: dict) -> None:
+    """Guarantees 100% overlap between Margin box and body TextFrames across all spreads:
+    - Verso (left) page: TextFrame bounds [-360, -270, -36, 252], centered at X=-198, Y=-9.
+    - Recto (right) page: TextFrame bounds [36, -270, 360, 252], centered at X=198, Y=-9.
+    - Title page (p1): horizontally centered between 36 and 360 (width 324).
+    - Preserves running headers, footers, logo polygons, and small callouts (< 200pt).
+    """
+    # 1. Update Preferences.xml
+    pref_xml = tmp_dir / "Resources" / "Preferences.xml"
+    if pref_xml.exists():
+        try:
+            proot = ET.parse(pref_xml).getroot()
+            pref_changed = False
+            for dp in proot.iter():
+                if lname(dp.tag) == "DocumentPreference":
+                    dp.set("PageWidth", "396")
+                    dp.set("PageHeight", "612")
+                    dp.set("FacingPages", "true")
+                    dp.set("DocumentBleedUniformSize", "false")
+                    dp.set("DocumentBleedTopOffset", "8.503937")
+                    dp.set("DocumentBleedBottomOffset", "8.503937")
+                    dp.set("DocumentBleedInsideOrLeftOffset", "0")
+                    dp.set("DocumentBleedOutsideOrRightOffset", "8.503937")
+                    pref_changed = True
+            for mp in proot.iter():
+                if lname(mp.tag) == "MarginPreference":
+                    mp.set("Top", "36")
+                    mp.set("Bottom", "54")
+                    mp.set("Left", "36")
+                    mp.set("Right", "36")
+                    mp.set("ColumnCount", "1")
+                    mp.set("ColumnGutter", "0")
+                    mp.set("ColumnsPositions", "0 324")
+                    pref_changed = True
+            for td in proot.iter():
+                if lname(td.tag) == "TextDefault":
+                    td.set("AppliedParagraphStyle", "ParagraphStyle/body_text")
+                    td.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
+                    if "FontStyle" in td.attrib:
+                        td.set("FontStyle", "Regular")
+                    if "PointSize" in td.attrib:
+                        td.set("PointSize", "9.65")
+                    if "RuleBelow" in td.attrib:
+                        td.set("RuleBelow", "false")
+                    pref_changed = True
+            if pref_changed:
+                ET.ElementTree(proot).write(pref_xml, encoding="utf-8", xml_declaration=True)
+        except Exception:
+            pass
+
+    spreads_dir = tmp_dir / "Spreads"
+    if not spreads_dir.is_dir():
+        return
+
+    for sf in spreads_dir.glob("*.xml"):
+        try:
+            sroot = ET.parse(sf).getroot()
+        except Exception:
+            continue
+
+        changed = False
+
+        # Ensure MarginPreference on spread and pages
+        for mp in sroot.iter():
+            if lname(mp.tag) == "MarginPreference":
+                mp.set("Top", "36")
+                mp.set("Bottom", "54")
+                mp.set("Left", "36")
+                mp.set("Right", "36")
+                mp.set("ColumnCount", "1")
+                mp.set("ColumnGutter", "0")
+                mp.set("ColumnsPositions", "0 324")
+                changed = True
+
+        # Collect pages and spread bounds
+        pages = []
+        for p in sroot.iter():
+            if lname(p.tag) == "Page":
+                p_name = p.attrib.get("Name", "")
+                gb_str = p.attrib.get("GeometricBounds", "0 0 612 396")
+                it_str = p.attrib.get("ItemTransform", "1 0 0 1 0 0")
+                try:
+                    gb = [float(v) for v in gb_str.split()]
+                    it = [float(v) for v in it_str.split()]
+                    pl = gb[1] + it[4]
+                    pr = gb[3] + it[4]
+                    pt = gb[0] + it[5]
+                    pb = gb[2] + it[5]
+                    pages.append((p_name, pl, pt, pr, pb))
+                except Exception:
+                    pass
+
+        if not pages:
+            if changed:
+                ET.ElementTree(sroot).write(sf, encoding="utf-8", xml_declaration=True)
+            continue
+
+        # Check and realign TextFrames
+        for tf in sroot.iter():
+            if lname(tf.tag) != "TextFrame":
+                continue
+
+            it_str = tf.attrib.get("ItemTransform", "")
+            if not it_str:
+                continue
+            try:
+                it = [float(v) for v in it_str.split()]
+            except Exception:
+                continue
+
+            ppa = next((e for e in tf.iter() if lname(e.tag) == "PathPointArray"), None)
+            if ppa is None:
+                continue
+            pts_el = [c for c in ppa if lname(c.tag) == "PathPointType"]
+            if len(pts_el) != 4:
+                continue
+
+            pts = []
+            for p_el in pts_el:
+                a = p_el.attrib.get("Anchor", "").split()
+                if len(a) == 2:
+                    try:
+                        pts.append((float(a[0]), float(a[1])))
+                    except Exception:
+                        pass
+            if len(pts) != 4:
+                continue
+
+            xs = [pt[0] for pt in pts]
+            ys = [pt[1] for pt in pts]
+            tfl = min(xs) + it[4]
+            tfr = max(xs) + it[4]
+            tft = min(ys) + it[5]
+            tfb = max(ys) + it[5]
+
+            w = tfr - tfl
+            h = tfb - tft
+
+            # Skip small callouts, running headers, footers
+            if w < 200 or h < 200:
+                continue
+
+            # Match to closest page by horizontal center
+            tf_cx = (tfl + tfr) / 2.0
+            matched_page = None
+            for p_name, pl, pt, pr, pb in pages:
+                if pl - 15 <= tf_cx <= pr + 15:
+                    matched_page = (p_name, pl, pt, pr, pb)
+                    break
+            if not matched_page:
+                best_d = float("inf")
+                for p_name, pl, pt, pr, pb in pages:
+                    pcx = (pl + pr) / 2.0
+                    d = abs(tf_cx - pcx)
+                    if d < best_d:
+                        best_d = d
+                        matched_page = (p_name, pl, pt, pr, pb)
+
+            if not matched_page:
+                continue
+
+            p_name, pl, pt, pr, pb = matched_page
+
+            # Page 1 (Title): keep vertical bounds as title layout, enforce horizontal centering
+            if p_name == "1":
+                target_left = pl + 36.0
+                target_right = pr - 36.0
+                dl = round(tfl - target_left, 2)
+                dr = round(tfr - target_right, 2)
+                if abs(dl) > 0.5 or abs(dr) > 0.5:
+                    shift_x = target_left - tfl
+                    it[4] += shift_x
+                    tf.set("ItemTransform", f"{it[0]} {it[1]} {it[2]} {it[3]} {it[4]:.12g} {it[5]:.12g}")
+                    changed = True
+                    stats["spread_frames_realigned"] += 1
+                continue
+
+            # Target Margin box: Top=36, Bottom=54, Left=36, Right=36
+            ml = pl + 36.0
+            mr = pr - 36.0
+            mt = pt + 36.0
+            mb = pb - 54.0
+
+            dl = round(tfl - ml, 2)
+            dr = round(tfr - mr, 2)
+            dt = round(tft - mt, 2)
+            db = round(tfb - mb, 2)
+
+            if abs(dl) <= 0.5 and abs(dr) <= 0.5 and abs(dt) <= 0.5 and abs(db) <= 0.5:
+                continue
+
+            cx = (ml + mr) / 2.0
+            cy = (mt + mb) / 2.0
+            half_w = 324.0 / 2.0  # 162.0
+            half_h = 522.0 / 2.0  # 261.0
+
+            tf.set("ItemTransform", f"1 0 0 1 {cx:.12g} {cy:.12g}")
+            if "GeometricBounds" in tf.attrib:
+                del tf.attrib["GeometricBounds"]
+
+            target_anchors = [
+                f"{-half_w:.12g} {-half_h:.12g}",
+                f"{-half_w:.12g} {half_h:.12g}",
+                f"{half_w:.12g} {half_h:.12g}",
+                f"{half_w:.12g} {-half_h:.12g}",
+            ]
+            for p_el, anc in zip(pts_el, target_anchors):
+                p_el.set("Anchor", anc)
+                p_el.set("LeftDirection", anc)
+                p_el.set("RightDirection", anc)
+
+            changed = True
+            stats["spread_frames_realigned"] += 1
+
+        if changed:
+            ET.ElementTree(sroot).write(sf, encoding="utf-8", xml_declaration=True)
+
+
+def postprocess_idml_es(idml_path: Path) -> dict:
+    """Post-processes an IDML package to guarantee 100% Spanish typography uniformity."""
     idml_path = Path(idml_path)
     if not idml_path.exists():
         return {"status": "error", "error": f"File not found: {idml_path}"}
@@ -364,9 +571,11 @@ def postprocess_idml(idml_path: Path) -> dict:
         "styles_updated": 0,
         "body_paras_restored": 0,
         "footers_repaired": 0,
+        "runaway_sub_sup_cleaned": 0,
+        "spread_frames_realigned": 0,
     }
 
-    with tempfile.TemporaryDirectory(prefix="idml_typo_") as tmp_dir:
+    with tempfile.TemporaryDirectory(prefix="idml_typo_es_") as tmp_dir:
         tmp_dir = Path(tmp_dir)
 
         with zipfile.ZipFile(idml_path, "r") as z:
@@ -413,21 +622,9 @@ def postprocess_idml(idml_path: Path) -> dict:
                             ps.set("FirstLineIndent", "18")
                             ps.set("SpaceBefore", "1.5")
                             ps.set("SpaceAfter", "3")
-                            ps.set("MinimumWordSpacing", "80")
-                            ps.set("DesiredWordSpacing", "100")
-                            ps.set("MaximumWordSpacing", "120")
-                            ps.set("MinimumLetterSpacing", "0")
-                            ps.set("DesiredLetterSpacing", "0")
-                            ps.set("MaximumLetterSpacing", "0")
-                            ps.set("Hyphenation", "true")
-                        stats["styles_updated"] += 1
-                    elif sid == "ParagraphStyle/fig caption":
-                        _ensure_pstyle_font(ps, "Palatino Linotype", point_size="9", leading="11")
-                        ps.set("Justification", "CenterAlign")
                         stats["styles_updated"] += 1
                     elif sid == "ParagraphStyle/chapter_name":
                         _ensure_pstyle_font(ps, "Gill Sans MT", point_size="16", leading="20")
-                        ps.set("Hyphenation", "false")
                         ps.set("FontStyle", "Bold")
                         ps.set("Justification", "CenterAlign")
                         ps.set("StartParagraph", "NextPage")
@@ -458,7 +655,6 @@ def postprocess_idml(idml_path: Path) -> dict:
                         ps.set("KeepLinesTogether", "true")
                     elif sid == "ParagraphStyle/Sub-heading":
                         _ensure_pstyle_font(ps, "Gill Sans MT", point_size="14", leading="18")
-                        ps.set("Hyphenation", "false")
                         ps.set("FontStyle", "Bold")
                         ps.set("Justification", "CenterAlign")
                         ps.set("SpaceBefore", "18")
@@ -469,7 +665,7 @@ def postprocess_idml(idml_path: Path) -> dict:
                             del ps.attrib["ParagraphBreakType"]
                     elif sid == "ParagraphStyle/quotes_normal":
                         _ensure_pstyle_font(ps, "Palatino Linotype", point_size="9.65", leading="12")
-                        ps.set("Justification", "LeftAlign")
+                        ps.set("Justification", "LeftJustified")
                         ps.set("KeepLinesTogether", "true")
                         ps.set("KeepFirstAndLastLines", "true")
                         ps.set("MinLinesAtStart", "2")
@@ -535,25 +731,8 @@ def postprocess_idml(idml_path: Path) -> dict:
                     "FillColor": "Swatch/Black",
                     "Underline": "false"
                 })
-            ET.ElementTree(sroot).write(styles_xml, encoding="utf-8", xml_declaration=True)
 
-        pref_xml = tmp_dir / "Resources" / "Preferences.xml"
-        if pref_xml.exists():
-            proot = ET.parse(pref_xml).getroot()
-            pref_changed = False
-            for td in proot.iter():
-                if lname(td.tag) == "TextDefault":
-                    td.set("AppliedParagraphStyle", "ParagraphStyle/body_text")
-                    td.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
-                    if "FontStyle" in td.attrib:
-                        td.set("FontStyle", "Regular")
-                    if "PointSize" in td.attrib:
-                        td.set("PointSize", "9.65")
-                    if "RuleBelow" in td.attrib:
-                        td.set("RuleBelow", "false")
-                    pref_changed = True
-            if pref_changed:
-                ET.ElementTree(proot).write(pref_xml, encoding="utf-8", xml_declaration=True)
+            ET.ElementTree(sroot).write(styles_xml, encoding="utf-8", xml_declaration=True)
 
         # -------------------------------------------------------------
         # 2. Check and repair Stories
@@ -581,7 +760,7 @@ def postprocess_idml(idml_path: Path) -> dict:
                                                 s = re.sub(r"[\r\n\u2028]+", " ", part)
                                                 s = re.sub(r"[^\w\s]", "", s.lower())
                                                 s = re.sub(r"\s+", " ", s).strip()
-                                                if s and not any(k in s for k in ["table of contents", "contents", "double 9 books"]):
+                                                if s and not any(k in s for k in ["table of contents", "contents", "índice", "indice", "double 9 books"]):
                                                     toc_norms.add(s)
                             else:
                                 txt = "".join(c.text or "" for c in psr.iter() if lname(c.tag) == "Content").strip()
@@ -595,19 +774,17 @@ def postprocess_idml(idml_path: Path) -> dict:
                                                     s = re.sub(r"[\r\n\u2028]+", " ", part)
                                                     s = re.sub(r"[^\w\s]", "", s.lower())
                                                     s = re.sub(r"\s+", " ", s).strip()
-                                                    if s and not any(k in s for k in ["table of contents", "contents", "double 9 books"]):
-                                                         toc_norms.add(s)
+                                                    if s and not any(k in s for k in ["table of contents", "contents", "índice", "indice", "double 9 books"]):
+                                                        toc_norms.add(s)
             toc_clean_norms = {re.sub(r"[\s\.\-_]+", "", t) for t in toc_norms}
 
-        if stories_dir.is_dir():
             for sf in stories_dir.glob("*.xml"):
                 raw_text = sf.read_text(encoding="utf-8")
-                # Handle MasterSpread footers via raw string to preserve <?ACE 18?> ProcessingInstruction
+                # Handle MasterSpread footers via raw string
                 if "<?ACE 18?>" in raw_text and "<TextVariableInstance" in raw_text:
                     if "\u2002|\u2002" not in raw_text and "\u2003" not in raw_text and " | " not in raw_text:
                         sep = '<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/$ID/[No character style]"><Properties><Leading type="enumeration">Auto</Leading><AppliedFont type="string">Bell MT</AppliedFont></Properties><Content>\u2002|\u2002</Content></CharacterStyleRange>'
                         if raw_text.find("<?ACE 18?>") < raw_text.find("<TextVariableInstance"):
-                            # Verso: Page Number then Title -> insert separator after Page Number CSR
                             idx = raw_text.find("<?ACE 18?></Content>")
                             if idx != -1:
                                 end_csr = raw_text.find("</CharacterStyleRange>", idx)
@@ -617,7 +794,6 @@ def postprocess_idml(idml_path: Path) -> dict:
                                     sf.write_text(raw_text, encoding="utf-8")
                                     stats["footers_repaired"] += 1
                         else:
-                            # Recto: Title then Page Number -> insert separator after Title CSR
                             idx = raw_text.find("<TextVariableInstance")
                             if idx != -1:
                                 end_csr = raw_text.find("</CharacterStyleRange>", idx)
@@ -665,9 +841,9 @@ def postprocess_idml(idml_path: Path) -> dict:
                     story_changed = True
 
                 parent_map = {}
-                for p in sroot.iter():
-                    for child in p:
-                        parent_map[child] = p
+                for _pp in sroot.iter():
+                    for _cc in _pp:
+                        parent_map[_cc] = _pp
 
                 for psr in sroot.iter():
                     if lname(psr.tag) != "ParagraphStyleRange":
@@ -675,131 +851,18 @@ def postprocess_idml(idml_path: Path) -> dict:
 
                     style = psr.attrib.get("AppliedParagraphStyle", "")
                     txt = "".join(c.text or "" for c in psr.iter() if lname(c.tag) == "Content").strip()
-                    rects = [e for e in psr.iter() if lname(e.tag) == "Rectangle"]
+                    has_table = any(lname(c.tag) == "Table" for c in psr.iter())
                     has_soft_break = "\u2028" in txt
-
-                    # If this is a placeholder paragraph: ensure exactly one closing Br and Normal style
-                    if "###Insert" in txt:
-                        if "ParagraphBreakType" in psr.attrib:
-                            del psr.attrib["ParagraphBreakType"]
-                            story_changed = True
-                        if "StartParagraph" in psr.attrib:
-                            del psr.attrib["StartParagraph"]
-                            story_changed = True
-                        psr.set("AppliedParagraphStyle", "ParagraphStyle/Normal")
-                        psr.set("Justification", "CenterAlign")
-                        for csr in psr.iter():
-                            if lname(csr.tag) == "CharacterStyleRange":
-                                for br in list(csr):
-                                    if lname(br.tag) == "Br":
-                                        csr.remove(br)
-                                        story_changed = True
-                        last_csr = list(psr)[-1] if list(psr) else None
-                        if last_csr is not None and not any(lname(c.tag) == "Br" for c in psr.iter()):
-                            ET.SubElement(last_csr, "Br")
-                            story_changed = True
-                        continue
-
-                    # A. Ensure captions use correct font
-                    if "caption" in style.lower():
-                        for csr in psr.iter():
-                            if lname(csr.tag) == "CharacterStyleRange":
-                                for p in csr:
-                                    if lname(p.tag) == "Properties":
-                                        for af in p:
-                                            if lname(af.tag) == "AppliedFont":
-                                                af.text = "Palatino Linotype"
-                                                story_changed = True
-                        continue
-
-                    # A2. Subheading page-break cleanup (Keep on SAME PAGE as chapter text)
-                    if "sub-heading" in style.lower() or style == "ParagraphStyle/Sub-heading":
-                        norm_txt = re.sub(r"[^\w\s]", "", txt.lower())
-                        norm_txt = re.sub(r"\s+", " ", norm_txt).strip()
-                        is_in_toc = (norm_txt in toc_norms) or any(norm_txt.startswith(t) for t in toc_norms if len(t) > 6 and len(norm_txt) > 6)
-                        if is_in_toc:
-                            continue
-
-                        if "ParagraphBreakType" in psr.attrib:
-                            del psr.attrib["ParagraphBreakType"]
-                            story_changed = True
-                        for c in psr.iter():
-                            if "ParagraphBreakType" in c.attrib:
-                                del c.attrib["ParagraphBreakType"]
-                                story_changed = True
-                        psr.set("SpaceBefore", "18")
-                        psr.set("SpaceAfter", "12")
-                        psr.set("KeepWithNext", "2")
-                        psr.set("KeepLinesTogether", "true")
-                        parent = parent_map.get(psr)
-                        if parent is not None:
-                            try:
-                                idx = list(parent).index(psr)
-                                while idx > 0:
-                                    prev_child = list(parent)[idx - 1]
-                                    if lname(prev_child.tag) == "ParagraphStyleRange":
-                                        if _is_blank_page_spacer(prev_child):
-                                            break
-                                        has_nb = any(c.attrib.get("ParagraphBreakType") == "NextPage" for c in prev_child.iter())
-                                        prev_txt = "".join(c.text or "" for c in prev_child.iter() if lname(c.tag) == "Content").strip()
-                                        if has_nb and not prev_txt and not _has_graphic(prev_child):
-                                            parent.remove(prev_child)
-                                            idx -= 1
-                                            story_changed = True
-                                        else:
-                                            break
-                                    else:
-                                        break
-                            except ValueError:
-                                pass
-                        for csr in psr.iter():
-                            if lname(csr.tag) == "CharacterStyleRange":
-                                _ensure_csr_font(csr, "Gill Sans MT", point_size="14", leading="18")
-                                csr.set("FontStyle", "Bold")
-                                story_changed = True
-                        continue
-
-                    # A3. Chapter heading blank page cleanup (eliminate blank pages between chapters)
-                    if "chapter_name" in style.lower():
-                        parent = parent_map.get(psr)
-                        if parent is not None:
-                            try:
-                                idx = list(parent).index(psr)
-                                while idx > 0:
-                                    prev_child = list(parent)[idx - 1]
-                                    if lname(prev_child.tag) == "ParagraphStyleRange":
-                                        if _is_blank_page_spacer(prev_child):
-                                            break
-                                        prev_txt = "".join(c.text or "" for c in prev_child.iter() if lname(c.tag) == "Content").replace("\u2028", "").replace("\ufeff", "").strip()
-                                        if not prev_txt and not _has_graphic(prev_child):
-                                            parent.remove(prev_child)
-                                            idx -= 1
-                                            story_changed = True
-                                        else:
-                                            break
-                                    else:
-                                        break
-                                if idx > 0:
-                                    prev_child = list(parent)[idx - 1]
-                                    if not _is_blank_page_spacer(prev_child):
-                                        if prev_child.attrib.get("ParagraphBreakType") == "NextPage":
-                                            del prev_child.attrib["ParagraphBreakType"]
-                                            story_changed = True
-                                        for c in prev_child.iter():
-                                            if c.attrib.get("ParagraphBreakType") == "NextPage":
-                                                del c.attrib["ParagraphBreakType"]
-                                                story_changed = True
-                            except ValueError:
-                                pass
 
                     # Check if paragraph was mistakenly styled as chapter_name / chapter_name01
                     if any(k in style.lower() for k in ["chapter", "sub-heading"]):
-                        norm_t = re.sub(r"[^\w\s]", "", txt.lower()).strip()
-                        norm_clean = re.sub(r"[\s\.\-_]+", "", norm_t)
+                        norm_txt = re.sub(r"[^\w\s]", "", txt.lower())
+                        norm_txt = re.sub(r"\s+", " ", norm_txt).strip()
+                        norm_clean = re.sub(r"[\s\.\-_]+", "", norm_txt)
                         has_chap_kw = bool(CHAP_KW_PATTERN.search(txt)) or bool(re.match(r"^(?:[IVXLCDM]+\b|\d+\b)\.?\s*", txt.strip(), re.I))
-                        is_known_heading = has_chap_kw or (norm_clean in toc_clean_norms) or (norm_t in toc_norms)
+                        is_known_heading = has_chap_kw or (norm_clean in toc_clean_norms) or (norm_txt in toc_norms)
 
-                        if not is_known_heading and (len(txt) > 150 or (len(txt) > 60 and "." in txt and not any(k in txt.lower() for k in ["part", "book", "chap", "vol"]))):
+                        if not is_known_heading and (len(txt) > 150 or (len(txt) > 60 and "." in txt and not any(k in txt.lower() for k in ["parte", "part", "cap", "vol"]))):
                             psr.set("AppliedParagraphStyle", "ParagraphStyle/body_text")
                             psr.set("Justification", "LeftAlign" if _is_true_verse_txt(txt) else "LeftJustified")
                             psr.set("FirstLineIndent", "18")
@@ -817,11 +880,40 @@ def postprocess_idml(idml_path: Path) -> dict:
                             stats["body_paras_restored"] += 1
                             story_changed = True
                         elif "chapter" in style.lower() and "after" not in style.lower():
+                            _par = parent_map.get(psr)
+                            _prev_prot = False
+                            if _par is not None:
+                                _kids = list(_par)
+                                if psr in _kids:
+                                    _ix = _kids.index(psr)
+                                    if _ix > 0 and _kids[_ix - 1].attrib.get("BlankPageProtected") == "true":
+                                        _prev_prot = True
                             psr.set("KeepAllLinesTogether", "true")
                             psr.set("KeepLinesTogether", "true")
                             psr.set("KeepWithNext", "2")
                             psr.set("Justification", "CenterAlign")
                             psr.set("FirstLineIndent", "0")
+                            parent = parent_map.get(psr)
+                            if _is_first_chapter_heading(psr, parent_map):
+                                psr.set("StartParagraph", "Anywhere")
+                                psr.set("SpaceBefore", "14.5")
+                                psr.set("SpaceAfter", "30")
+                                story_changed = True
+                            elif _has_preceding_page_spacer(psr, parent_map):
+                                psr.set("StartParagraph", "Anywhere")
+                                psr.set("SpaceBefore", "14.5")
+                                psr.set("SpaceAfter", "30")
+                                story_changed = True
+                            elif _prev_prot:
+                                if psr.attrib.get("StartParagraph") != "Anywhere":
+                                    psr.set("StartParagraph", "Anywhere")
+                                    story_changed = True
+                            elif not _prev_is_heading(psr, parent_map):
+                                psr.set("StartParagraph", "NextPage")
+                                story_changed = True
+                            else:
+                                psr.set("StartParagraph", "Anywhere")
+                                story_changed = True
                         elif "after" in style.lower():
                             if "StartParagraph" in psr.attrib:
                                 del psr.attrib["StartParagraph"]
@@ -840,38 +932,11 @@ def postprocess_idml(idml_path: Path) -> dict:
                             psr.set("Justification", "CenterAlign")
                             psr.set("FirstLineIndent", "0")
 
-                    if style in ("ParagraphStyle/chapter_name", "ParagraphStyle/chapter_name01"):
-                        parent = parent_map.get(psr)
-                        _prev_prot = False
-                        if parent is not None:
-                            _kids = list(parent)
-                            if psr in _kids:
-                                _ix = _kids.index(psr)
-                                if _ix > 0 and _kids[_ix - 1].attrib.get("BlankPageProtected") == "true":
-                                    _prev_prot = True
-                        if _is_first_chapter_heading(psr, parent_map):
-                            psr.set("StartParagraph", "Anywhere")
-                            psr.set("SpaceBefore", "14.5")
-                            psr.set("SpaceAfter", "30")
-                            story_changed = True
-                        elif _has_preceding_page_spacer(psr, parent_map):
-                            psr.set("StartParagraph", "Anywhere")
-                            psr.set("SpaceBefore", "14.5")
-                            psr.set("SpaceAfter", "30")
-                            story_changed = True
-                        elif _prev_prot:
-                            if psr.attrib.get("StartParagraph") != "Anywhere":
-                                psr.set("StartParagraph", "Anywhere")
-                                story_changed = True
-                        elif psr.attrib.get("StartParagraph") != "NextPage" and not _prev_is_heading(psr, parent_map):
-                            psr.set("StartParagraph", "NextPage")
-                            story_changed = True
-                        else:
-                            psr.set("StartParagraph", "Anywhere")
-                            story_changed = True
+                    if has_soft_break and not has_table and "chapter" not in style.lower():
+                        psr.set("Justification", "LeftAlign")
+                        story_changed = True
 
-                    # B. Standardize all body paragraphs
-                    is_body_like = (
+                    is_body = (
                         style in (
                             "ParagraphStyle/body_text",
                             "ParagraphStyle/Normal",
@@ -891,10 +956,10 @@ def postprocess_idml(idml_path: Path) -> dict:
                     is_heading_or_front = any(k in style.lower() for k in [
                         "chapter", "sub-heading", "heading", "toc", "author", "title", "caption", "copyright", "verso", "doublenine", "about_the_auther"
                     ]) or any(k in txt.lower() for k in [
-                        "double 9 books", "all rights reserved", "isbn", "published by", "about the author"
-                    ])
+                        "double 9 books", "reservados todos los derechos", "isbn", "sobre la autoría"
+                    ]) or ("publicado por" in txt.lower() and ("double 9" in txt.lower() or "derechos" in txt.lower() or len(txt) < 50))
 
-                    if is_body_like and not is_heading_or_front and txt and not rects and txt != "\u2028" and "\ufeff" not in txt:
+                    if is_body and not is_heading_or_front and txt and not has_table and txt != "\u2028" and "\ufeff" not in txt:
                         if style in ("ParagraphStyle/Normal", "ParagraphStyle/$ID/[Basic Paragraph]", "ParagraphStyle/copybody"):
                             psr.set("AppliedParagraphStyle", "ParagraphStyle/body_text")
                             psr.set("Justification", "LeftAlign" if _is_true_verse_txt(txt) else "LeftJustified")
@@ -906,21 +971,15 @@ def postprocess_idml(idml_path: Path) -> dict:
                         _sl = style.lower()
                         _cur_just = psr.attrib.get("Justification")
                         if txt.strip() in _SEPARATORS:
-                            # Stanza / section separators ("*", "* * *") are centered.
                             if _cur_just != "CenterAlign":
                                 psr.set("Justification", "CenterAlign")
                                 story_changed = True
                         elif any(_k in _sl for _k in ("quote", "verse", "block", "poem", "epigraph")):
-                            # Block / quote / verse styles are ALWAYS ragged-left (quotes_normal
-                            # contains "normal", so it would otherwise be justified).
                             if _cur_just not in ("CenterAlign", "RightAlign"):
                                 psr.set("Justification", "LeftAlign")
                                 story_changed = True
                         elif _is_verse_psr(psr) or _soft_break_would_stretch(txt):
-                            # Verse, or any paragraph holding a soft line break ( ):
-                            # these stretch badly when justified (unlike <Br> paragraph
-                            # breaks). Keep centered if already centered, else ragged-left.
-                            if _cur_just not in ("CenterAlign", "RightAlign"):
+                            if _cur_just in ("LeftJustified", "FullyJustified"):
                                 psr.set("Justification", "LeftAlign")
                                 story_changed = True
                         elif "cent" not in _sl and _cur_just not in ("CenterAlign", "RightAlign"):
@@ -930,20 +989,10 @@ def postprocess_idml(idml_path: Path) -> dict:
                         psr.set("KeepFirstAndLastLines", "true")
                         psr.set("MinLinesAtStart", "2")
                         psr.set("MinLinesAtEnd", "2")
-                        if "PointSize" in psr.attrib:
-                            del psr.attrib["PointSize"]
-                        if "Leading" in psr.attrib:
-                            del psr.attrib["Leading"]
 
-                        for csr in psr.iter():
+                        for csr in list(psr):
                             if lname(csr.tag) == "CharacterStyleRange":
-                                cstyle = csr.attrib.get("AppliedCharacterStyle", "")
-                                is_bold = "bold" in cstyle.lower()
-                                is_italic = "italic" in cstyle.lower()
-                                if not is_bold and not is_italic:
-                                    csr.set("FontStyle", "Regular")
-
-                                # Clean runaway Subscript / Superscript overrides
+                                # 1. Clean runaway Subscript / Superscript
                                 pos = csr.attrib.get("Position", "")
                                 if pos in ("Subscript", "Superscript"):
                                     raw_text = "".join(e.text or "" for e in csr.iter() if lname(e.tag) == "Content")
@@ -952,7 +1001,7 @@ def postprocess_idml(idml_path: Path) -> dict:
                                     if not c_txt:
                                         is_runaway = True
                                     elif pos == "Superscript":
-                                        is_note = bool(re.match(r"^\[?\d{1,5}[a-z]?\]?$", c_txt)) or c_txt.lower() in ("*", "†", "‡", "§", "#", "st", "nd", "rd", "th", "d", "e", "er", "re", "°")
+                                        is_note = bool(re.match(r"^\[?\d{1,5}[a-z]?\]?$", c_txt)) or c_txt.lower() in ("*", "†", "‡", "§", "#", "st", "nd", "rd", "th", "d", "e", "er", "re", "o", "a", "os", "as", "°")
                                         if not is_note:
                                             is_runaway = True
                                     elif pos == "Subscript":
@@ -966,13 +1015,13 @@ def postprocess_idml(idml_path: Path) -> dict:
                                         stats["runaway_sub_sup_cleaned"] = stats.get("runaway_sub_sup_cleaned", 0) + 1
                                         story_changed = True
 
-                                # Fix rogue language tags
                                 if csr.attrib.get("AppliedLanguage") in ("$ID/Arabic", "$ID/Hebrew"):
                                     del csr.attrib["AppliedLanguage"]
                                     story_changed = True
 
                                 # Strip hyperlink styling: remove link, force Black color, remove underline
                                 # Preserve any legitimate Superscript / Subscript marker!
+                                cstyle = csr.attrib.get("AppliedCharacterStyle", "")
                                 if "hyperlink" in cstyle.lower():
                                     if pos == "Superscript":
                                         csr.set("AppliedCharacterStyle", "CharacterStyle/superscript")
@@ -1007,42 +1056,38 @@ def postprocess_idml(idml_path: Path) -> dict:
                                             idx += 1
                                         story_changed = True
 
-                                # Ensure body text font and 9.65pt size on all body text
-                                _ensure_csr_font(csr, "Palatino Linotype", point_size="9.65", leading="12")
+                                # 2. Enforce Palatino Linotype 9.65pt on body text
+                                if pos not in ("Superscript", "Subscript"):
+                                    _ensure_csr_font(csr, "Palatino Linotype", point_size="9.65", leading="12")
+                                    story_changed = True
 
-                                # Strip rogue underline from body text paragraphs
+                                # 3. Validate underline
                                 if csr.attrib.get("Underline") == "true":
                                     c_txt = "".join(e.text or "" for e in csr.iter() if lname(e.tag) == "Content")
                                     c_clean = c_txt.replace("\xa0", " ").strip().lower()
-                                    if len(c_clean) > 30 or re.search(r"[.?!]\s+[a-z]", c_clean) or not re.match(
-                                        r"^(?:footnote(?:\s*\d+)?|\d{1,4}|chapter(?:\s+[ivxlcdm0-9]+)?|chapters(?:\s+[ivxlcdm0-9]+)?|[ivxlcdm]{2,}|[-–—]\d+|p\.\s*\d+)$",
-                                        c_clean,
-                                        re.I,
-                                    ):
+                                    if len(c_clean) > 30 or re.search(r"[.?!]\s+[a-z]", c_clean):
                                         del csr.attrib["Underline"]
+                                        cstyle = csr.attrib.get("AppliedCharacterStyle", "")
                                         if "underlin" in cstyle.lower():
                                             csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
-                                    else:
-                                        if "Position" in csr.attrib:
-                                            del csr.attrib["Position"]
-                        story_changed = True
+                                        story_changed = True
 
                     elif style in ("ParagraphStyle/quotes_normal",):
                         for csr in psr.iter():
                             if lname(csr.tag) == "CharacterStyleRange":
                                 _ensure_csr_font(csr, "Palatino Linotype", point_size="9.65", leading="12")
-                        story_changed = True
+                                story_changed = True
 
-                    # C. Rogue font cleanup: clear old fonts from regular text
-                    if not is_heading_or_front and "author" not in style.lower():
+                    # Clear rogue non-Palatino fonts from regular text
+                    if not is_heading_or_front and not has_table and "author" not in style.lower():
                         for csr in psr.iter():
                             if lname(csr.tag) == "CharacterStyleRange":
-                                for p in csr:
-                                    if lname(p.tag) == "Properties":
-                                        for af in p:
-                                            if lname(af.tag) == "AppliedFont" and af.text in ("Times New Roman", "Minion Pro", "Baskerville Old Face"):
-                                                af.text = "Palatino Linotype"
-                                                story_changed = True
+                                props = next((p for p in csr if lname(p.tag) == "Properties"), None)
+                                if props is not None:
+                                    for af in list(props):
+                                        if lname(af.tag) == "AppliedFont" and af.text in ("Times New Roman", "Minion Pro", "Baskerville Old Face"):
+                                            af.text = "Palatino Linotype"
+                                            story_changed = True
 
                 try:
                     from core.justify_stretch_format import fix_justify_stretch as _fjs
@@ -1057,40 +1102,34 @@ def postprocess_idml(idml_path: Path) -> dict:
                     ET.ElementTree(sroot).write(sf, encoding="utf-8", xml_declaration=True)
 
         # -------------------------------------------------------------
-        # 3. Re-pack IDML cleanly
+        # 3. Enforce 100% Margin & TextFrame overlap across all Spreads
+        # -------------------------------------------------------------
+        realign_spreads_es(tmp_dir, stats)
+
+        # -------------------------------------------------------------
+        # 4. Re-pack IDML cleanly
         # -------------------------------------------------------------
         tmp_out = idml_path.with_suffix(".tmp.idml")
-        with zipfile.ZipFile(tmp_out, "w", zipfile.ZIP_DEFLATED) as z_out:
-            for p in sorted(tmp_dir.rglob("*")):
-                if p.is_file():
-                    z_out.write(p, p.relative_to(tmp_dir).as_posix())
-        tmp_out.replace(idml_path)
+        with zipfile.ZipFile(tmp_out, "w", zipfile.ZIP_DEFLATED) as zout:
+            for root, dirs, files in os.walk(tmp_dir):
+                for file in files:
+                    full_p = Path(root) / file
+                    rel_p = full_p.relative_to(tmp_dir)
+                    zout.write(full_p, str(rel_p).replace("\\", "/"))
+
+        shutil.move(str(tmp_out), str(idml_path))
 
     try:
-        from core.epub_class_format import apply_epub_classes as _aec
+        from core.center_from_epub import apply_center as _apply_center
     except Exception:
         try:
-            from epub_class_format import apply_epub_classes as _aec
+            from center_from_epub import apply_center as _apply_center
         except Exception:
-            _aec = None
-    if _aec is not None:
+            _apply_center = None
+    if _apply_center is not None:
         try:
-            _aec(idml_path)
+            _apply_center(idml_path)
         except Exception:
             pass
 
-    try:
-        from core.collapse_soft_breaks import apply_collapse as _acsb
-    except Exception:
-        try:
-            from collapse_soft_breaks import apply_collapse as _acsb
-        except Exception:
-            _acsb = None
-    if _acsb is not None:
-        try:
-            _acsb(idml_path)
-        except Exception:
-            pass
-
-    stats["status"] = "ok"
     return stats

@@ -433,9 +433,9 @@ def get_epub_dir():
     cands = [
         repo_root / "epub_input_files",
         repo_root / "epub_input_files_Spanish",
-        repo_root / "idml_automation_workflow" / "epub_input_files",
+        repo_root / "epub_input_files",
         Path.cwd() / "epub_input_files",
-        Path.cwd() / "idml_automation_workflow" / "epub_input_files",
+        Path.cwd() / "epub_input_files",
     ]
     for c in cands:
         if c.is_dir() and any(c.glob("*.epub")):
@@ -503,9 +503,9 @@ def load_epub_heading_hierarchy(book_name):
         for d in [
             repo_root / "epub_input_files",
             repo_root / "epub_input_files_Spanish",
-            repo_root / "idml_automation_workflow" / "epub_input_files",
+            repo_root / "epub_input_files",
             Path.cwd() / "epub_input_files",
-            Path.cwd() / "idml_automation_workflow" / "epub_input_files",
+            Path.cwd() / "epub_input_files",
         ]:
             if d.is_dir():
                 matched = list(d.glob(f"*{clean_name}*.epub"))

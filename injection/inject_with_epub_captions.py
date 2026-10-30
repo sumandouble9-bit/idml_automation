@@ -398,7 +398,7 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
     # Main batch driver: open each IDML, inject EPUB images/captions, reflow, and export the injected IDML.
     _HERE = os.path.dirname(os.path.abspath(__file__))
     _WF = os.path.dirname(_HERE)
-    _REPO = os.path.dirname(_WF)
+    _REPO = _WF
 
     if input_dir is None:
         _env_input = os.environ.get("INJECT_INPUT", "").strip()

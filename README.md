@@ -51,15 +51,15 @@ The previous internal folder name `pipeline_engine` was renamed to **`book_workf
 ### Why was `core` duplicated previously? (Resolved)
 
 In earlier iterations of the repository:
-1. `idml_automation_workflow/Scripts/core/` held 18 utility modules (XML handlers, typography postprocessors, TOC synchronizers, font managers, and ISBN lookup tables).
-2. `idml_automation_workflow/pipeline_engine/core/` was introduced during an initial refactoring attempt with only `indesign_app.py`.
+1. `Scripts/core/` held 18 utility modules (XML handlers, typography postprocessors, TOC synchronizers, font managers, and ISBN lookup tables).
+2. `pipeline_engine/core/` was introduced during an initial refactoring attempt with only `indesign_app.py`.
 
 This caused confusion because developers could not tell which `core` package took precedence or where a new utility belonged.
 
 **The Solution:**
 All 19 core modules have been consolidated into a **single, unified package**:
 ```text
-idml_automation_workflow/book_workflow/core/
+book_workflow/core/
 ```
 The obsolete `Scripts/core/` and `pipeline_engine/core/` folders have been completely eliminated. All imports now resolve cleanly and predictably from `book_workflow.core`.
 
@@ -320,83 +320,92 @@ Analyzes page balance across all body pages:
 ## Repository Directory Structure
 
 ```text
-idml_automation_workflow/
+idml_automation/
 ├── README.md                                # Master documentation
-├── run_book_pipeline.py                     # Root CLI runner (forwards to idml_automation_workflow/run_book_pipeline.py)
-├── input_files/                             # Input: Raw IDML manuscripts (English & Spanish)
+├── requirements.txt                         # Python dependencies
+├── run_book_pipeline.py                     # Single Primary CLI runner (Book Production Workflow)
+├── run_chapter_top_spacing.py               # Chapter top spacing runner
+├── text_bottom_gap_format.py                # Stage 3b: Bottom gap reflow engine
+├── measure_page_gaps.py                     # Quality audit tool: measures page gaps
+├── pdf_export.py                            # PDF export module
+├── check_captions_all.py                    # Caption checker across books
+├── idml_input_files/                        # Input: Raw IDML manuscripts (English & Spanish)
 ├── epub_input_files/                        # Input: Source EPUB packages (images & captions)
 ├── Reference/                               # Reference layout templates
-├── Document fonts/                          # Embedded fonts (Palatino Linotype, Gill Sans MT, etc.)
+├── Fonts/                                   # Embedded fonts (Palatino Linotype, Gill Sans MT, etc.)
+├── logo/                                    # Publisher logos (LEAF-BOUND, etc.)
 │
-└── idml_automation_workflow/
-    ├── README.md                            # Package documentation
-    ├── run_book_pipeline.py                 # Single Primary CLI runner (Book Production Workflow)
-    ├── fix_text_bottom_gap.py               # Stage 3b: Bottom gap reflow engine
-    ├── measure_page_gaps.py                 # Quality audit tool: measures page gaps
-    ├── pdf_export.py                        # PDF export module
-    │
-    ├── book_workflow/                       # Clean OOP Workflow Package (replaces pipeline_engine)
-    │   ├── __init__.py
-    │   ├── workflow.py                      # BookWorkflow master orchestrator class
-    │   ├── paths.py                         # WorkflowPaths registry
-    │   ├── book_discovery.py                # Discovers Book instances from input directories
-    │   │
-    │   ├── models/                          # Domain entity models
-    │   │   ├── __init__.py
-    │   │   └── book.py                      # Book domain model (ISBN, paths, status, language)
-    │   │
-    │   ├── stages/                          # OOP Stage implementations
-    │   │   ├── __init__.py
-    │   │   ├── base_stage.py                # Abstract WorkflowStage base class
-    │   │   ├── formatting_stage.py          # Stage 1: DocumentFormattingStage
-    │   │   ├── normalization_stage.py       # Stage 2: DocumentNormalizationStage
-    │   │   ├── injection_stage.py           # Stage 3: AssetInjectionStage
-    │   │   └── export_stage.py              # Stage 4: QualityAuditAndExportStage
-    │   │
-    │   ├── core/                            # Consolidated publishing core (no duplicate core)
-    │   │   ├── indesign_app.py              # InDesignApp COM context manager
-    │   │   ├── font_manager.py              # Font discovery & validation
-    │   │   ├── isbn_manager.py              # ISBN lookup & metadata manager
-    │   │   ├── idml_utils.py                # Low-level IDML XML & zip manipulation helpers
-    │   │   ├── typography_postprocessor.py  # Typography standardization & soft-break fixes
-    │   │   ├── chapter_heading_fix.py       # 2-line heading splitting (fixed year matching)
-    │   │   ├── chapter_top_spacing.py       # 14.5pt top gap & frontmatter sequencer
-    │   │   ├── toc_synchronizer.py          # PDF-to-IDML TOC page number synchronizer
-    │   │   └── ... (all 19 publishing core modules)
-    │   │
-    │   ├── config/                          # Language and pipeline configuration
-    │   │   ├── language_config.py
-    │   │   └── languages.py
-    │   │
-    │   └── formatting/                      # Modular typography & page formatters
-    │       ├── base_page.py                 # BasePage abstract class
-    │       ├── book_formatter.py            # Formatter coordinator
-    │       ├── title/                       # Title page implementations (EN & ES)
-    │       ├── copyright/                   # Copyright page implementations (EN & ES)
-    │       ├── author/                      # About the Author page implementations (EN & ES)
-    │       ├── table_of_contents/           # TOC page implementations (EN & ES)
-    │       └── typography/                  # Typography formatters (EN & ES)
-    │
-    ├── injection/                           # EPUB image extraction & caption injection
-    │   ├── inject_with_epub_captions.py
-    │   ├── epub_caption_apply.py
-    │   ├── fix_table_fit.py
-    │   └── logo_inject.py
-    │
-    ├── test_cases/                          # Automated quality audit verification suite
-    │   ├── audit.py                         # Master audit runner
-    │   ├── check_missing_paragraphs.py      # Reconciles text against original source
-    │   ├── check_overset.py                 # Detects overset text frames
-    │   ├── check_sidebyside.py              # Verifies side-by-side image tables
-    │   ├── check_caption.py                 # Audits image caption styling
-    │   ├── check_bleed.py                   # Verifies 3mm print bleeds
-    │   ├── check_word_spacing_and_block.py  # Scans for loose justification
-    │   └── fix_paragraph_styles.py          # Alignment guard & justification fix
-    │
-    └── final_output_files/                  # Production deliverable folder
-        ├── idml_files/                      # Standardized IDML deliverables
-        ├── pdf_files/                       # Print-ready PDFs
-        └── rejected_files/                  # Quarantine folder with audit failure reasons
+├── book_workflow/                           # Clean OOP Workflow Package
+│   ├── __init__.py
+│   ├── workflow.py                          # BookWorkflow master orchestrator class
+│   ├── paths.py                             # WorkflowPaths registry
+│   ├── book_discovery.py                    # Discovers Book instances from input directories
+│   │
+│   ├── models/                              # Domain entity models
+│   │   ├── __init__.py
+│   │   └── book.py                          # Book domain model (ISBN, paths, status, language)
+│   │
+│   ├── stages/                              # OOP Stage implementations
+│   │   ├── __init__.py
+│   │   ├── base_stage.py                    # Abstract WorkflowStage base class
+│   │   ├── formatting_stage.py              # Stage 1: DocumentFormattingStage
+│   │   ├── normalization_stage.py           # Stage 2: DocumentNormalizationStage
+│   │   ├── injection_stage.py               # Stage 3: AssetInjectionStage
+│   │   └── export_stage.py                  # Stage 4: QualityAuditAndExportStage
+│   │
+│   ├── core/                                # Consolidated publishing core
+│   │   ├── indesign_app.py                  # InDesignApp COM context manager
+│   │   ├── font_manager.py                  # Font discovery & validation
+│   │   ├── isbn_manager.py                  # ISBN lookup & metadata manager
+│   │   ├── idml_utils.py                    # Low-level IDML XML & zip manipulation helpers
+│   │   ├── typography_postprocessor.py      # Typography standardization & soft-break fixes
+│   │   ├── chapter_heading_fix.py           # 2-line heading splitting (fixed year matching)
+│   │   ├── chapter_top_spacing.py           # 14.5pt top gap & frontmatter sequencer
+│   │   ├── toc_synchronizer.py              # PDF-to-IDML TOC page number synchronizer
+│   │   └── ... (all publishing core modules)
+│   │
+│   ├── config/                              # Language and pipeline configuration
+│   │   ├── language_config.py
+│   │   └── languages.py
+│   │
+│   └── formatting/                          # Modular typography & page formatters
+│       ├── base_page.py                     # BasePage abstract class
+│       ├── book_formatter.py                # Formatter coordinator
+│       ├── title/                           # Title page implementations (EN & ES)
+│       ├── copyright/                       # Copyright page implementations (EN & ES)
+│       ├── author/                          # About the Author page implementations (EN & ES)
+│       ├── table_of_contents/               # TOC page implementations (EN & ES)
+│       └── typography/                      # Typography formatters (EN & ES)
+│
+├── injection/                               # EPUB image extraction & caption injection
+│   ├── inject_with_epub_captions.py
+│   ├── epub_caption_apply.py
+│   ├── image_layout_format.py
+│   └── logo_inject.py
+│
+├── table/                                   # Table layout and fitting
+│   └── table_fit_format.py
+│
+├── test_cases/                              # Automated quality audit verification suite
+│   ├── audit.py                             # Master audit runner
+│   ├── check_missing_paragraphs.py          # Reconciles text against original source
+│   ├── check_overset.py                     # Detects overset text frames
+│   ├── check_sidebyside.py                  # Verifies side-by-side image tables
+│   ├── check_caption.py                     # Audits image caption styling
+│   ├── check_bleed.py                       # Verifies 3mm print bleeds
+│   ├── check_word_spacing_and_block.py      # Scans for loose justification
+│   └── paragraph_styles_format.py           # Alignment guard & justification fix
+│
+├── Output/                                  # Intermediate pipeline artifacts
+│   ├── Formatted/
+│   ├── page_resize_output/
+│   ├── injected_idml_files/
+│   └── pdf_files/
+│
+└── final_output_files/                      # Production deliverable folder
+    ├── idml_files/                          # Standardized IDML deliverables
+    ├── pdf_files/                           # Print-ready PDFs
+    └── rejected_files/                      # Quarantine folder with audit failure reasons
 ```
 
 ---
@@ -411,8 +420,8 @@ idml_automation_workflow/
 ### Setup Instructions
 1. Clone the repository:
    ```bash
-   git clone https://github.com/sumandouble9-bit/idml_automation_workflow.git
-   cd idml_automation_workflow
+   git clone https://github.com/sumandouble9-bit/idml_automation.git
+   cd idml_automation
    ```
 2. Install Python dependencies:
    ```bash
@@ -423,44 +432,42 @@ idml_automation_workflow/
 
 ## Execution & CLI Guide
 
-The single, unified command to run the complete publishing pipeline is **`run_book_pipeline.py`**. You can run it directly from the workspace root or from within the `idml_automation_workflow/` directory.
+The single, unified command to run the complete publishing pipeline is **`run_book_pipeline.py`**. You can run it directly from the workspace root.
 
 ### Running a Book (Recommended)
 
 ```powershell
 # Run a single book end-to-end by ISBN or filename:
-python idml_automation_workflow/run_book_pipeline.py 9789370421240
-
-# Or from within the idml_automation_workflow/ folder:
 python run_book_pipeline.py 9789370421240
+
 ```
 
 ### Batch & Stage Execution Options
 
 ```powershell
 # Process all books found in input_files/ end-to-end:
-python idml_automation_workflow/run_book_pipeline.py
+python run_book_pipeline.py
 
 # Execute a specific stage only:
-python idml_automation_workflow/run_book_pipeline.py 9789370421240 --step 1   # Stage 1: Formatting
-python idml_automation_workflow/run_book_pipeline.py 9789370421240 --step 2   # Stage 2: Normalization
-python idml_automation_workflow/run_book_pipeline.py 9789370421240 --step 3   # Stage 3: Asset Injection
-python idml_automation_workflow/run_book_pipeline.py 9789370421240 --step 3b  # Stage 3b: Gap Fill
-python idml_automation_workflow/run_book_pipeline.py 9789370421240 --step 4   # Stage 4: PDF Export & Audit
+python run_book_pipeline.py 9789370421240 --step 1   # Stage 1: Formatting
+python run_book_pipeline.py 9789370421240 --step 2   # Stage 2: Normalization
+python run_book_pipeline.py 9789370421240 --step 3   # Stage 3: Asset Injection
+python run_book_pipeline.py 9789370421240 --step 3b  # Stage 3b: Gap Fill
+python run_book_pipeline.py 9789370421240 --step 4   # Stage 4: PDF Export & Audit
 
 # Filter by language:
-python idml_automation_workflow/run_book_pipeline.py --lang es
-python idml_automation_workflow/run_book_pipeline.py --lang en
+python run_book_pipeline.py --lang es
+python run_book_pipeline.py --lang en
 
 # Force reprocessing even if intermediate files already exist:
-python idml_automation_workflow/run_book_pipeline.py 9789370421240 --force
+python run_book_pipeline.py 9789370421240 --force
 ```
 
 ---
 
 ## Automated Quality Verification Suite
 
-Before exporting production deliverables, documents pass through automated integrity gates located in `idml_automation_workflow/test_cases/`:
+Before exporting production deliverables, documents pass through automated integrity gates located in `test_cases/`:
 
 - **Missing Paragraph Audit (`check_missing_paragraphs.py`)**: Reconciles the plain text of the output IDML against the original raw IDML to guarantee **zero lost paragraphs**.
 - **Overset Frame Detection (`check_overset.py`)**: Verifies that no text frames have remaining overset text (`tf.overflows == false`).

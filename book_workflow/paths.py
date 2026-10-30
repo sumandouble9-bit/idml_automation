@@ -7,25 +7,27 @@ class WorkflowPaths:
 
     def __init__(self, workflow_dir=None):
         self.workflow_dir = Path(workflow_dir) if workflow_dir else Path(__file__).resolve().parent.parent
-        self.repo_dir = self.workflow_dir.parent
+        self.repo_dir = self.workflow_dir
         self.package_dir = self.workflow_dir / "book_workflow"
         self.core_dir = self.package_dir / "core"
         self.scripts_dir = self.workflow_dir / "Scripts"
         self.injection_dir = self.workflow_dir / "injection"
         self.table_dir = self.workflow_dir / "table"
+        self.logo_dir = self.workflow_dir / "logo"
+        self.reference_dir = self.workflow_dir / "Reference"
+        self.fonts_dir = self.workflow_dir / "Fonts"
 
         self.input_dir = self._first_existing_with_idml([
-            self.repo_dir / "idml_input_files",
             self.workflow_dir / "idml_input_files",
-            self.repo_dir / "input_files",
             self.workflow_dir / "input_files",
-            self.repo_dir / "Input",
-        ], default=self.repo_dir / "input_files")
+            self.workflow_dir / "Input",
+        ], default=self.workflow_dir / "idml_input_files")
 
         self.epub_dir = self._first_existing_with_glob([
-            self.repo_dir / "epub_input_files",
             self.workflow_dir / "epub_input_files",
-        ], pattern="*.epub", default=self.repo_dir / "epub_input_files")
+            self.workflow_dir / "epub_files",
+            self.workflow_dir / "epubs",
+        ], pattern="*.epub", default=self.workflow_dir / "epub_input_files")
 
         self.reference_file = self._resolve_reference()
 
@@ -54,13 +56,13 @@ class WorkflowPaths:
         return default
 
     def _resolve_reference(self):
-        for ref_dir in (self.workflow_dir / "Reference", self.repo_dir / "Reference"):
+        for ref_dir in (self.reference_dir, self.workflow_dir / "Reference"):
             if ref_dir.is_dir():
                 refs = sorted(ref_dir.glob("*.idml"))
                 chosen = next((r for r in refs if "MIS" in r.name.upper()), refs[0] if refs else None)
                 if chosen:
                     return chosen
-        return self.workflow_dir / "Reference" / "11671 LES MISÉRABLES.idml"
+        return self.reference_dir / "11671 LES MISÉRABLES.idml"
 
     def register_on_syspath(self):
         """Ensures all module directories are importable across scripts."""

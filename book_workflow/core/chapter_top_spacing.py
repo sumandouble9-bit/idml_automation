@@ -1526,19 +1526,15 @@ def main():
     target = args.path
     if not target:
         for candidate in [
-            "idml_automation_workflow/renamed_output_files",
             "renamed_output_files",
-            "../idml_automation_workflow/renamed_output_files",
-            "idml_automation_workflow/Output",
             "Output",
             "../Output",
-            "../idml_automation_workflow/Output",
         ]:
             if Path(candidate).is_dir() and list(Path(candidate).glob("*.idml")):
                 target = candidate
                 break
         if not target:
-            target = "idml_automation_workflow/renamed_output_files"
+            target = "final_output_files/renamed_output_files"
 
     if not args.output_dir and not args.in_place:
         default_out = Path(__file__).resolve().parent.parent.parent / "final_output_files" / "sequenced_output"

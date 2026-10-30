@@ -11,33 +11,33 @@ page_resize_output/
 
 # Ignore output IDML files and reports
 Output/
-idml_automation_workflow/Output/*.idml
-idml_automation_workflow/Output/*_report.json
+Output/*.idml
+Output/*_report.json
 
 # Pipeline output/data directories (never commit generated book data)
-idml_automation_workflow/Output/Formatted/*
-!idml_automation_workflow/Output/Formatted/.gitkeep
-idml_automation_workflow/Output/page_resize_output/*
-!idml_automation_workflow/Output/page_resize_output/.gitkeep
-idml_automation_workflow/Output/injected_idml_files/*
-!idml_automation_workflow/Output/injected_idml_files/.gitkeep
-idml_automation_workflow/Output/pdf_files/*
-!idml_automation_workflow/Output/pdf_files/.gitkeep
-idml_automation_workflow/Output/reports/*
-!idml_automation_workflow/Output/reports/.gitkeep
+Output/Formatted/*
+!Output/Formatted/.gitkeep
+Output/page_resize_output/*
+!Output/page_resize_output/.gitkeep
+Output/injected_idml_files/*
+!Output/injected_idml_files/.gitkeep
+Output/pdf_files/*
+!Output/pdf_files/.gitkeep
+Output/reports/*
+!Output/reports/.gitkeep
 
-idml_automation_workflow/Output_Spanish/
-idml_automation_workflow/formate_document/
-idml_automation_workflow/final_output_files/
-idml_automation_workflow/page_resize_output/
-idml_automation_workflow/epub_image_map_inject/extracted_images/
-idml_automation_workflow/image_inject/extracted_images/
+Output_Spanish/
+formate_document/
+final_output_files/
+page_resize_output/
+epub_image_map_inject/extracted_images/
+image_inject/extracted_images/
 renamed_output_files/
 
 # Test/scratch artifacts
-idml_automation_workflow/_injpage.jpg
+_injpage.jpg
 *_injpage.jpg
-idml_automation_workflow/_*.png
+_*.png
 
 *.pdf
 *.log
