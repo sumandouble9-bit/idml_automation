@@ -1,33 +1,3 @@
-"""
-Dedicated Standalone Module: Split Compound Verse & Prose
-=========================================================
-Safely isolates short verse / quote paragraphs (holding soft breaks \u2028)
-from ordinary running body prose when both are bundled inside a single
-multi-paragraph ParagraphStyleRange.
-
-Problem Solved:
----------------
-In some IDML manuscripts (e.g. converted from Word/EPUB), an entire chapter
-containing 20+ paragraphs is grouped inside a single <ParagraphStyleRange>.
-If the opening epigraph or Bible quotation contains soft line breaks (\u2028),
-the postprocessor flags the entire ParagraphStyleRange as a soft-break block
-and stamps Justification="LeftAlign" across the ENTIRE chapter, causing all
-regular body paragraphs to render ragged-right instead of justified.
-
-Safety & Multi-Book Protection:
--------------------------------
-1. Only acts on compound ParagraphStyleRanges that contain MULTIPLE hard
-   paragraph breaks (<Br /> count > 1) AND contain a soft break (\u2028).
-2. Pure verse blocks (where every line is a short poem line, or single-stanza
-   verse with Br <= 1) are untouched and retain their LeftAlign formatting.
-3. Paragraphs containing soft line breaks (\u2028) strictly retain LeftAlign,
-   guaranteeing that short verse lines are never stretched and no loose
-   word-spacing issues can ever occur.
-4. Only the subsequent normal prose paragraphs (without \u2028) receive
-   Justification="LeftJustified" with standard body indentation.
-5. All other books with pre-split or pure verse paragraphs are 100% unaffected.
-"""
-
 import copy
 import re
 import zipfile

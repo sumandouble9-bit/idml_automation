@@ -1,10 +1,3 @@
-"""
-Core Modular Heading Classifier & Pairing Engine
-Provides unified, non-hardcoded heading identification, normalization,
-run-on splitting, and same-page pairing for multi-level book structures
-(Parts, Books, Chapters, and Subheadings) across both English and Spanish books.
-"""
-
 import re
 import html
 import xml.etree.ElementTree as ET

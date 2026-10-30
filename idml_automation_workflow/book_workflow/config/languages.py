@@ -1,11 +1,3 @@
-"""Language registry and content-based detector.
-
-Holds one LanguageConfig per supported language and reproduces the original
-content-based language detection exactly (stem markers first, then a
-keyword-frequency comparison), now driven by the registry instead of hard-coded
-keyword lists.
-"""
-
 import re
 import zipfile
 from pathlib import Path

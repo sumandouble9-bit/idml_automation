@@ -1,17 +1,3 @@
-# -*- coding: utf-8 -*-
-# Measure page bottom-gaps and image placement for each injected IDML.
-# Two tables per book (pages AFTER the TOC only):
-#  [1] PER-PAGE BOTTOM GAP: Seq# (PDF page order), Folio (printed page no.),
-#      Gap(pt) from bottom margin to lowest body content, and LastItem.
-#  [2] IMAGES: image, its Seq#/Folio, the PAGE BEFORE it (PrevSeq/PrevFolio),
-#      image Width/Height (pt), and that previous page's bottom gap.
-# Footers/running heads are ignored. A large gap = content/image pushed to next page.
-#
-# Input : final_output_files/idml_files/*_injected.idml
-# Output: final_output_files/page_gaps_report.txt
-#
-# Usage: python measure_page_gaps.py            (all books)
-#        python measure_page_gaps.py 9789361422768   (one book)
 import os
 import sys
 import glob

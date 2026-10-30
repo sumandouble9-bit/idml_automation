@@ -1,5 +1,3 @@
-"""BookFormatter: OOP engine coordinating document typography and page-by-page layout."""
-
 import json
 import tempfile
 import time

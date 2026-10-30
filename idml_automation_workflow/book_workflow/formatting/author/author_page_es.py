@@ -1,14 +1,3 @@
-"""
-Spanish About the Author Page Module:
-- Dedicated About the Author page formatter for Spanish IDML books.
-- Locates 'SOBRE LA AUTORÍA' or 'SOBRE EL AUTOR' heading.
-- Inserts preceding page-break and top spacer returns so it starts on a fresh page.
-- Formats heading with ParagraphStyle/about_the_autherh (CenterAlign, Times New Roman Bold 18pt, SpaceAfter=15).
-- Formats author biography paragraphs with ParagraphStyle/body_text (Palatino Linotype 9.65pt, LeftJustified, FirstLineIndent=18pt).
-- Cleans list formatting and removes junk EPUB paragraphs.
-- Preserves story threading and XML structure.
-"""
-
 import copy
 import re
 import sys

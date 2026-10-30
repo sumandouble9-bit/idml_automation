@@ -1,19 +1,3 @@
-"""
-Typography Post-Processor for IDML Automation Workflow:
-Ensures 100% uniform typography across all IDML files and stages:
-1. Enforces Palatino Linotype 9.65pt (12pt leading) on body text and all fallback/default styles:
-   - ParagraphStyle/body_text
-   - ParagraphStyle/Normal
-   - ParagraphStyle/$ID/[Basic Paragraph]
-   - ParagraphStyle/$ID/NormalParagraphStyle
-   - ParagraphStyle/$ID/[Normal Paragraph Style]
-2. Restores any body story paragraphs that were reset to 'Normal' (e.g. during image injection)
-   back to 'ParagraphStyle/body_text' with Palatino Linotype 9.65pt.
-3. Enforces clean running footer formatting with en-space pipe separator (\u2002|\u2002) so page numbers
-   and book titles never collide (e.g. '41Following the Equator' -> '41 | Following the Equator').
-4. Ensures Resources/Styles.xml and Resources/Fonts.xml contain canonical definitions.
-"""
-
 import copy
 import re
 import shutil

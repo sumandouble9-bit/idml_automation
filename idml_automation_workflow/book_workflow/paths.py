@@ -1,5 +1,3 @@
-"""WorkflowPaths: single source of truth for all project directories and deliverables."""
-
 import sys
 from pathlib import Path
 

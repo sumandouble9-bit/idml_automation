@@ -1,5 +1,3 @@
-"""Stage 3: EPUB Asset, Image & Caption Injection via Adobe InDesign."""
-
 import os
 import subprocess
 import sys

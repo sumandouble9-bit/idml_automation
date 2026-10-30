@@ -1,17 +1,3 @@
-"""
-Spanish Title Page Module:
-- Dedicated title page formatter for Spanish IDML books.
-- Replicates Reference Title Page layout:
-  1. Main Title (29 pt Helvetica Bold, Centered) + Subtitle (18/15 pt, Centered, if present)
-  2. Clean spacer paragraph (PointSize=18)
-  3. Separate "Por" credit (17 pt Minion Pro italic, author_name style, Centered)
-  4. Author name (16 pt Times New Roman regular, main_page_title style, Centered)
-- Centers TextFrame: Width 324 pt, Height 290 pt, ItemTransform="1 0 0 1 198 -9"
-- Centers Publisher Logo Polygon at ItemTransform="1 0 0 1 198.5325489776247 220.0"
-- Unthreads Page 2 text frame so Page 2 starts cleanly with Copyright
-- Removes old front-matter title paragraphs from target's main story
-"""
-
 import copy
 import re
 import sys

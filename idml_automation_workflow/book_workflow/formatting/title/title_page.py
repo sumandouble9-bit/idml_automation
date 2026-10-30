@@ -1,5 +1,3 @@
-"""TitlePage: format the book's title page for any language."""
-
 from ..base_page import FormatPage
 
 

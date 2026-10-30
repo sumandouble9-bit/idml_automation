@@ -1,33 +1,3 @@
-"""
-Fix image layout — a standalone pass that runs AFTER image injection.
-
-It does NOT change the injection logic and it NEVER detaches images (detaching
-makes text reflow behind a page-fixed image, i.e. overlap). Images always stay
-in the text flow so text makes room for them.
-
-Two structural problems it repairs (never by detaching):
-
-  1. Images placed inside a TABLE whose total width is wider than the text column
-     (e.g. two figures in a 2-column table, 468pt wide in a 324pt column) — the
-     table then spills past the margin. For every table wider than the usable
-     column width (column - 8pt, to keep a 4pt gap each side) it scales the column
-     widths down proportionally so the table fits, and refits the images inside
-     the cells.
-
-  2. Any single image whose FRAME sticks out past its page margin box — too wide
-     (touches/crosses the left/right margin) or too TALL (crosses the top/bottom
-     margin, e.g. a full-page figure taller than the text area). This is the
-     "oversized image outside the margin line" case. Such an image is scaled down
-     PROPORTIONALLY, in place, until it fits inside the margin box (with the usual
-     4pt side gap and a little headroom for its line + caption). Placement only
-     caps an image against its host frame, which on a near-empty page can be far
-     taller than the real text area — so genuinely tall images can still overflow;
-     this pass runs after pagination is final and catches them.
-
-Everything stays in the text flow, so nothing overlaps. Returns a short summary
-string, e.g. "tables=1 images=2".
-"""
-
 import win32com.client
 
 JS = 1246973031

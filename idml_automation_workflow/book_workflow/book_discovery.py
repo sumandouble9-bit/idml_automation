@@ -1,5 +1,3 @@
-"""BookDiscovery: identifies manuscripts and matches them with metadata and EPUB assets."""
-
 from pathlib import Path
 from typing import List, Optional
 

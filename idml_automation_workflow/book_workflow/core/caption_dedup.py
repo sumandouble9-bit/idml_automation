@@ -1,14 +1,3 @@
-"""Remove duplicate figure captions, duplicated figures, and whole duplicated
-content blocks (a caption must appear once, centered below its image).
-
-Two passes:
-  1. BLOCK dedup - if a caption's text repeats and the surrounding run of
-     paragraphs is identical for 5+ consecutive paragraphs, a whole section was
-     duplicated; remove the second copy.
-  2. FIGURE/caption dedup - an adjacent duplicated figure (image+caption twice)
-     or a stray caption left above the image; keep one caption below its image.
-Pure XML, language-agnostic.
-"""
 import re
 import xml.etree.ElementTree as ET
 from collections import defaultdict

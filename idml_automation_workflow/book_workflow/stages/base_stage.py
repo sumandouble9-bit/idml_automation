@@ -1,5 +1,3 @@
-"""WorkflowStage: abstract base class for production stages in the publishing workflow."""
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import List

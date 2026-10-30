@@ -1,7 +1,3 @@
-"""
-Root Alias for Chapter Heading Top Spacing & Page Sequencing Runner
-Forwards all calls directly to idml_automation_workflow/run_chapter_top_spacing.py
-"""
 import sys
 import subprocess
 from pathlib import Path

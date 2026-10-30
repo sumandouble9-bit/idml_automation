@@ -1,15 +1,3 @@
-"""
-Spanish TOC Page Module:
-- Dedicated TOC formatter for Spanish IDML books.
-- Formats "Contenido" heading with ParagraphStyle/about_the_autherh (CenterAlign, 18pt Bold, Times New Roman).
-- Removes Word/EPUB automatic list numbering from TOC entries.
-- Removes duplicate EPUB landmark/navigation paragraphs (Cubierta, Título, Derechos de autor, Inicio del contenido, etc.).
-- Dynamically extracts TOC entries from corresponding EPUB toc.ncx or IDML stories.
-- Applies ParagraphStyle/toc_normaltext with tab stops (Position=278) and dot leader ('.').
-- Handles Part/Book headers with ParagraphStyle/content_ch or ParagraphStyle/toc_bold.
-- Preserves story threading and XML structure.
-"""
-
 import copy
 import math
 import os

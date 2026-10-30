@@ -1,5 +1,3 @@
-"""Stage 4: Quality Audit Gate, TOC Sync & Print PDF Export via InDesign."""
-
 import shutil
 import sys
 import zipfile

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-"""Chapter break formatting module to ensure clean page breaks and prevent blank pages."""
 import os
 import shutil
 import tempfile

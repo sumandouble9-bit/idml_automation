@@ -1,5 +1,3 @@
-"""Publishing stages for the Book Production Workflow."""
-
 from .base_stage import WorkflowStage, PipelineStage, StageResult
 from .formatting_stage import DocumentFormattingStage, FormattingStage
 from .normalization_stage import DocumentNormalizationStage, NormalizationStage

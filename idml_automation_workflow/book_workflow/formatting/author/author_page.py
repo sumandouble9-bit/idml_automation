@@ -1,5 +1,3 @@
-"""AuthorPage: format the 'About the Author' page for any language."""
-
 from ..base_page import FormatPage
 
 

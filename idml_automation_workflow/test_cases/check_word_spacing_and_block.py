@@ -1,12 +1,3 @@
-"""Strict audit: BODY PARAGRAPHS MUST BE JUSTIFIED + WORD SPACING MUST BE TIGHT.
-
-Rejects a book (PDF + IDML) when:
-  1. a real body paragraph (one that wraps to several lines) is left-ragged
-     instead of justified, or
-  2. the body word spacing is set so loose that justified words visibly stretch.
-Nothing else is checked. Generic across all books: keys on paragraph-style names
-+ content, never on any ISBN.
-"""
 import re
 import zipfile
 

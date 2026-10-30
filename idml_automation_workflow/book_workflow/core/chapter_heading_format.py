@@ -1,13 +1,3 @@
-"""Normalize chapter / book headings in an IDML story tree.
-
-- Split "NUMBER <sep> TITLE" headings (e.g. "CHAPTER I—M. MYRIEL",
-  "BOOK FIRST—A JUST MAN", "CAPÍTULO XIV. Title") into two lines
-  "NUMBER<U+2028>TITLE" with the separator removed.
-- Center them and promote misclassified headings (body_text etc.) to chapter_name.
-
-NEVER touches the Table of Contents (toc / content / index styles) or page-number
-TOC rows. Language-agnostic (English + Spanish). Pure XML, no InDesign.
-"""
 import re
 import xml.etree.ElementTree as ET
 

@@ -1,12 +1,3 @@
-"""BookWorkflow: master orchestrator coordinating all production stages for IDML publishing.
-
-Provides a clean, modular, object-oriented architecture that automates:
-  Stage 1: Document Formatting & Typography
-  Stage 2: Document Setup & Normalization
-  Stage 3: EPUB Asset, Image & Caption Injection
-  Stage 4: Quality Gate, TOC Sync & Print PDF Export
-"""
-
 import argparse
 import sys
 from typing import List, Optional

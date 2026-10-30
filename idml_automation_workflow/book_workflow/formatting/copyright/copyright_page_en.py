@@ -1,36 +1,3 @@
-"""
-Copyright Page Module:
-Implements Task 3: "Preserve formatting and positioning of the copyright page."
-
-Features:
-- Dynamically extracts book title, subtitle, author, copyright year, and ISBN from the target IDML.
-- Never hardcodes any book title or ISBN.
-- Clones dedicated Story_u_copyright_story.xml from reference Story_u2a6.xml.
-- Registers Story_u_copyright_story.xml in designmap.xml using correct idPkg:Story namespace.
-- Unthreads Page 2 TextFrame from Page 3 TextFrame (PreviousTextFrame="n", NextTextFrame="n"),
-  guaranteeing that copyright text can NEVER spill or overflow onto Page 3 under any circumstances.
-- Implements the 5 exact Reference Copyright ParagraphStyleRanges:
-  1. Verso Title & Subtitle & Author: ParagraphStyle/verso_title
-     - Title (17 pt Bold, Leading 24.4, CenterAlign, Ebrima)
-     - Subtitle (if present: 14 pt Bold, Leading 15, CenterAlign, Ebrima)
-     - Spacer (<Br /> 1 pt, Leading 2.75)
-     - Author ("by <Author>", 14 pt Bold, Leading 9.1, CenterAlign, Ebrima)
-     - Spacer (<Br /> 13.25 pt, Leading 14.6)
-  2. Legal block: ParagraphStyle/copyright_text (12 pt, Leading 14, CenterAlign, SpaceBefore=0.5, SpaceAfter=0.5)
-     - Copyright © {year}
-     - All Rights reserved.
-     - Legal text with exact double line returns (<Br /><Br />)
-     - Dynamic {isbn}
-  3. Published by: ParagraphStyle/body_text (11 pt Bold, CenterAlign, FirstLineIndent=0)
-  4. DOUBLE 9 BOOKS: ParagraphStyle/doublenine_books (22 pt Black, CenterAlign, SpaceBefore=1, SpaceAfter=1)
-  5. Address block: ParagraphStyle/copyright_text (12 pt, Leading 14, CenterAlign)
-     - Address lines
-     - Triple break (<Br /><Br /><Br />)
-     - "This book is under public domain" (matching reference Story_u2a6.xml)
-- Total content height is ~418 pt, which comfortably fits inside Page 2's 460 pt frame with ample margin buffer.
-- Removes old copyright paragraphs from the main story so the main story begins directly with Contents on Page 3.
-"""
-
 import copy
 import re
 import sys

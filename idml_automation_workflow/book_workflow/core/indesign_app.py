@@ -1,11 +1,3 @@
-"""InDesignApp: one COM wrapper for every InDesign interaction.
-
-Consolidates the connection, DoScript execution, non-interactive setup, recovery
-clearing and crash/hang detection that were previously copy-pasted across the
-injection and table-fit scripts. Behaviour (including the ExtendScript language
-id and restart sequence) is preserved.
-"""
-
 import os
 import subprocess
 import time

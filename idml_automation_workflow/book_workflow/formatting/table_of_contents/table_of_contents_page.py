@@ -1,5 +1,3 @@
-"""TableOfContentsPage: format the contents page for any language."""
-
 from ..base_page import FormatPage
 
 

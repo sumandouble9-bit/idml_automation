@@ -1,16 +1,3 @@
-"""
-EPUB tools for the EPUB-driven injection variant.
-
-For a given .epub this module:
-  * extracts every image (OEBPS/images/...) into a per-book folder, and
-  * builds a map  image_basename -> caption text  from the EPUB's
-    <figure><img/><figcaption>...</figcaption></figure> structure.
-
-Both the images and the captions therefore come from the EPUB itself (not from
-input_files/images). The image file name is the join key with the IDML
-placeholder (###Insert imageNNN.jpg here###).
-"""
-
 import os
 import re
 import html

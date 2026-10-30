@@ -1,24 +1,3 @@
-"""
-Audit injected IDMLs.
-
-Reads each *_injected.idml from output_files/idml_files/ and:
-  1. Opens it in InDesign.
-  2. Verifies no "###Insert ... here###" placeholder remains.
-  3. Verifies every link is resolved (LinkStatus.NORMAL) and every image frame
-     actually holds a graphic (no empty rectangles where an image was expected).
-  4. Verifies no story is overset (plus centering / oversized-image checks).
-
-Every document is exported to a print-quality PDF; the audit result only decides
-where things go:
-  PASS -> IDML stays in  output_files/idml_files/
-          PDF written to output_files/pdf_files/
-  FAIL -> PDF written to rejected_files/pdf_files/
-          IDML moved to  rejected_files/idml_files/ with a .audit.txt reason
-
-Resilient to InDesign hangs / stuck modal dialogs: restarts InDesign and retries
-the document (up to 3 attempts) so the pipeline keeps running.
-"""
-
 import os
 import re
 import sys

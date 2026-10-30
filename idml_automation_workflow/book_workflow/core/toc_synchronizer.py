@@ -1,12 +1,3 @@
-"""
-TOC Synchronizer Module:
-Dynamically synchronizes Table of Contents (TOC) page numbers with the actual content pages
-where chapter headings land after InDesign layout, image injection, and text reflow.
-Provides two complementary synchronization mechanisms:
-  1. sync_toc_via_indesign(app): InDesign ExtendScript routine running live before IDML export.
-  2. sync_idml_toc_from_pdf(idml_path, pdf_path): PyMuPDF extractor ensuring 100% precision with exported PDF.
-"""
-
 import os
 import re
 import sys

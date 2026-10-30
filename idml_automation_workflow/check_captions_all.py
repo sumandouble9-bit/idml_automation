@@ -1,14 +1,3 @@
-# -*- coding: utf-8 -*-
-# Static caption verifier (no InDesign). For every injected IDML it finds, and for
-# every image that has an EPUB caption, it checks whether the paragraph directly
-# below the image is a centred "fig caption" paragraph that contains the caption.
-#
-# Reports, per book:  OK (fig caption) / NOT-CENTERED / MISSING / DUPLICATE
-# plus a roll-up across all books.
-#
-# Usage:
-#   python check_captions_all.py                 # every injected IDML found
-#   python check_captions_all.py 9789358718041   # one book
 import os, re, sys, html, glob, zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))

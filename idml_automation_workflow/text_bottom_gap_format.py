@@ -1,23 +1,3 @@
-# -*- coding: utf-8 -*-
-# Fill the BOTTOM text gap on body pages.
-#
-# Where the gap between the last line of body text and the bottom margin is more
-# than 1 mm, this vertically justifies that page's body text frame so the text
-# fills down to ~1 mm from the bottom margin line.
-#
-# Scope / safety:
-#   * TEXT pages only. Pages whose lowest content is a (large) image are left alone
-#     -- image gaps are handled separately.
-#   * CHAPTER-END pages are NOT filled: if the next page starts a new chapter, that
-#     page's gap is intentional and is left as-is.
-#   * Small inline decorations (< 150 pt in both dimensions) are treated as text.
-#   * Non-destructive: reads final_output_files/idml_files and writes the fixed IDMLs
-#     to final_output_files/text_gap_fixed (originals untouched).
-#
-# Run this AFTER measure_page_gaps.py.
-#
-# Usage: python text_bottom_gap_format.py            (all books)
-#        python text_bottom_gap_format.py 9789361422768   (one book)
 import os
 import sys
 import glob

@@ -1,17 +1,3 @@
-"""
-TOC Page Module:
-Implements Task 4: "Preserve formatting and positioning of the TOC page."
-
-Features:
-- Ensures "Contents" heading is formatted with ParagraphStyle/about_the_autherh (CenterAlign, 18pt Bold).
-- Sets ParagraphBreakType="NextPage" on Contents heading to ensure it starts at the top of Page 3.
-- Removes Word/EPUB automatic list numbering from TOC entries.
-- Applies ParagraphStyle/toc_normaltext with tab stops (Position=278) and dot leader ('.').
-- Handles Part/Book headers with ParagraphStyle/content_ch or ParagraphStyle/toc_bold.
-- Removes duplicate EPUB artifact paragraphs inserted after the TOC (Cover, Title, Copyright, Contents, etc.).
-- Preserves story threading and XML structure.
-"""
-
 import copy
 import re
 import sys

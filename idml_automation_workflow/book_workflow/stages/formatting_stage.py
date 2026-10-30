@@ -1,5 +1,3 @@
-"""Stage 1: Dual-Language Document Typography & Structural Formatting."""
-
 from pathlib import Path
 from .base_stage import PipelineStage, StageResult
 from ..formatting.book_formatter import BookFormatter

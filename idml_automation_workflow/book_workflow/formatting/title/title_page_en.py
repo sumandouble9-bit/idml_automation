@@ -1,23 +1,3 @@
-"""
-Title Page Module:
-
-- Task 2: Preserve formatting and positioning of the title page as per original/reference
-- Task 9: Fix the title-page font size and font style according to reference layout
-- Task 10: Preserve the title-page "by" credit styling separately from title and author text
-
-Produces an exact replica of Reference Title Page 
-- Decouples Page 1 into an independent, unthreaded story (Story_u_title_story.xml)
-- Replicates the exact 4 ParagraphStyleRanges from Reference Story_u288.xml:
-  1. Main Title (29 pt Helvetica Bold, Centered) + Subtitle (20 pt, Centered, if present) + spacer (20 pt)
-  2. Exact 3-blank-return spacer paragraph (CSR size=27.77 pt br=2 + CSR size=0.1 pt br=1)
-  3. Separate "by" credit (17 pt Minion Pro italic, author_name style, Centered)
-  4. Author name (16 pt Times New Roman regular, main_page_title style, Centered)
-- Centers TextFrame: Width 324 pt, Height 290 pt, ItemTransform="1 0 0 1 198 -9"
-- Centers Publisher Logo Polygon at ItemTransform="1 0 0 1 198.5325489776247 225.34730737762473"
-- Unthreads Page 2 text frame so Page 2 starts cleanly with Copyright
-- Removes old front-matter title paragraphs from target's main story
-"""
-
 import copy
 import re
 import sys

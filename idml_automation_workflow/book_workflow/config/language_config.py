@@ -1,10 +1,3 @@
-"""LanguageConfig: all per-language data the pipeline needs in one place.
-
-A single configuration object drives the otherwise language-agnostic engine.
-Adding a new language (e.g. Portuguese) means adding one LanguageConfig to the
-registry, not duplicating a whole code path.
-"""
-
 from dataclasses import dataclass, field
 from typing import Tuple
 

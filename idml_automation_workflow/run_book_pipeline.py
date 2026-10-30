@@ -1,9 +1,3 @@
-"""Entry point for the Book Production Workflow.
-
-    python run_book_pipeline.py 9789361422768
-    python run_book_pipeline.py --lang es --step all
-"""
-
 import sys
 from pathlib import Path
 

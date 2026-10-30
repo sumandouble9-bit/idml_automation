@@ -1,17 +1,3 @@
-"""
-Apply EPUB captions to already-injected images (runs AFTER injection, before
-export). For every anchored body image whose file name has an EPUB caption:
-
-  1. remove any nearby paragraph (just above or just below the image) whose text
-     already equals that caption -- this clears the original caption whether it
-     sat above the image, was moved below by the injector, or was interleaved in
-     a packed multi-image paragraph (no duplicate caption is left),
-  2. insert the EPUB caption as a fresh paragraph directly BELOW the image, and
-  3. style it as the "fig caption" (centred, 9pt, all-caps words 8pt, non-bold).
-
-Images are never detached, so nothing overlaps text. Returns the count applied.
-"""
-
 import win32com.client
 
 JS = 1246973031

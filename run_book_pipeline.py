@@ -1,8 +1,3 @@
-"""Book Production Pipeline Master Runner (Root Alias)
-===================================================
-Runs all pipeline steps (Formatting -> Normalization -> Injection -> Gap Fill -> Layout Spacing & Sequencing -> PDF Export & TOC Sync)
-Forwards all calls directly to idml_automation_workflow/run_book_pipeline.py
-"""
 import sys
 import subprocess
 from pathlib import Path

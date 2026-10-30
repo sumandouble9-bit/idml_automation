@@ -1,13 +1,3 @@
-"""
-Dedicated Spanish Typography Post-Processor for IDML Automation Workflow:
-Ensures 100% uniform typography across all Spanish IDML files and stages:
-1. Enforces Palatino Linotype 9.65pt (12pt leading) on body text and default styles.
-2. Cleans rogue runaway Subscript and Superscript across all stories.
-3. Strips hardcoded 'Minion Pro' and point sizes from CharacterStyles in Resources/Styles.xml
-   so that bold and italic text seamlessly inherit the paragraph's Palatino Linotype font.
-4. Enforces clean running footer formatting with en-space pipe separator (\\u2002|\\u2002).
-"""
-
 import copy
 import os
 import re

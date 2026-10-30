@@ -1,9 +1,3 @@
-"""
-ISBN Manager Module
-Manages mapping between ePub ISBNs, Print ISBNs, and Serial Numbers from the master Excel sheet.
-Provides formatted hyphenated ISBNs for copyright pages and standardized output filenames.
-"""
-
 import os
 import re
 import json

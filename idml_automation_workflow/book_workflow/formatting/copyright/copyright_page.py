@@ -1,5 +1,3 @@
-"""CopyrightPage: format the copyright page for any language."""
-
 from ..base_page import FormatPage
 
 

@@ -1,20 +1,3 @@
-"""
-Typography and Styles Module:
-Implements:
-- Task 6: Apply correct font family (Palatino Linotype) and font size (9.65pt) to body text
-- Task 7: Restore bold formatting wherever bold character styles are applied
-- Task 8: Restore italic formatting wherever italic character styles are applied
-- Task 11: Separate chapter number and chapter title when they appear on the same run-on line
-- Task 12: Preserve correct H1, H2, H3 and other heading styles and text position (center, left, right)
-- Task 13: Restore superscript formatting for footnote/reference markers
-- Task 14: Restore subscript formatting wherever used
-- Task 15: Remove/merge duplicate Bold, Italic, Underline and All Caps character styles
-- Task 16: Ensure correct Bold/Italic/Underline/All Caps character styles apply intended formatting
-- Task 17: Verify Underline and All Caps formatting throughout the book
-- Task 18: Verify index content formatting and spacing
-- Task 19: Verify footnote content formatting and placement
-"""
-
 import copy
 import html
 import re

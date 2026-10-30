@@ -1,21 +1,3 @@
-"""
-Font Manager Module:
-Ensures all required font families for the IDML Automation Workflow:
-- Bell MT (Regular, Bold, Italic)
-- Gill Sans MT (Regular, Bold, Italic, Bold Italic)
-- Minion Pro (Regular, Bold, Italic, Bold Italic)
-- Palatino Linotype, Times New Roman, Georgia, Calibri, etc.
-
-Key Capabilities:
-1. Scans IDML documents dynamically (Fonts.xml, Styles.xml, Stories) to discover all font families.
-2. Maintains a local 'Fonts/' directory with font files.
-3. Automatically searches local Windows font repositories (Windows/Fonts, LocalAppData, Adobe Acrobat/Creative Cloud).
-4. Auto-downloads missing font families from online repositories (Google Fonts / Microsoft Fonts archives).
-5. Automatically registers and installs fonts into Windows User Fonts (%LOCALAPPDATA%\\Microsoft\\Windows\\Fonts and HKCU Registry) and calls WM_FONTCHANGE.
-6. Automatically bundles fonts into '<output_dir>/Document fonts/' so Adobe InDesign natively activates all fonts without missing font alerts or pink highlights.
-7. Graceful fallback font aliasing for unavailable proprietary fonts.
-"""
-
 import ctypes
 import os
 import re

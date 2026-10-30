@@ -1,17 +1,3 @@
-"""
-Dedicated, ISOLATED logo injection.
-
-Handles ONLY the LeafBound logo, nothing else (filters strictly by the logo link
-name), so it can never affect body-image injection or any image's position.
-
-It is deliberately simple and does exactly what the template intends:
-  1. relink every logo link to `logo_path` (the trimmed logo, no transparent padding),
-  2. keep the ORIGINAL placeholder frame exactly as it is -- same position, same
-     height, same width (the frame is NEVER moved or resized),
-  3. fit the whole logo inside that original frame so it is fully visible, and
-  4. remove any border/stroke on the frame.
-"""
-
 import win32com.client
 
 JS = 1246973031

@@ -1,5 +1,3 @@
-"""TypographyFormatter: body typography, headings and character styles."""
-
 from ..base_page import FormatPage
 
 

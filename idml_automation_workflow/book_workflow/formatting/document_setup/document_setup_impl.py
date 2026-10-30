@@ -1,13 +1,3 @@
-"""
-Document Setup Module:
-Implements Task 1: "Add book size, page marge, bleed margin"
-
-Sets trim size to 5.5 x 8.5 in (396 x 612 pt),
-Margins to Top 36 pt, Bottom 54 pt, Left 36 pt, Right 36 pt,
-Bleed margins to 3mm (8.5039 pt) top, bottom, outside/right, 0 inside.
-Resizes pages, text frames, and logo polygon frames in all spreads and master spreads to match.
-"""
-
 import copy
 import re
 import sys

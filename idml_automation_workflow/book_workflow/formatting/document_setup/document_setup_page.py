@@ -1,9 +1,3 @@
-"""DocumentSetupPage: trim size, margins, bleeds and master spreads.
-
-Shared across every language (English and Spanish use the same document setup),
-so there is no per-language branch here.
-"""
-
 from ..base_page import FormatPage
 
 

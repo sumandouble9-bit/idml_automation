@@ -1,22 +1,3 @@
-"""
-Step 1 of the pipeline — Normalize document setup on every input IDML,
-WITHOUT opening InDesign. Operates directly on the IDML XML via zipfile + regex.
-
-For each IDML in input_files/:
-  1. Back up the original to input_files/_original/<name>.idml on first run.
-  2. Rewrite these XML attributes in-place:
-       Resources/Preferences.xml  -> DocumentPreference page size + bleed
-       Spreads/*.xml              -> every <MarginPreference ...> and Page GeometricBounds
-       MasterSpreads/*.xml        -> every <MarginPreference ...> and Page GeometricBounds
-  3. Save back to the original path (zip preserving mimetype as first stored entry).
-
-Target values:
-    Page:    139.7 x 215.9 mm  = 396 x 612 pt  (Letter-Half, Facing Pages)
-    Margins: Top 12.7 mm = 36pt, Bottom 19.05 mm = 54pt,
-             Inside 12.7 mm = 36pt, Outside 12.7 mm = 36pt, 1 column, 0 gutter
-    Bleed:   Top 3 mm ≈ 8.503937pt, Bottom 3 mm, Inside 0, Outside 3 mm
-"""
-
 import io
 import os
 import re

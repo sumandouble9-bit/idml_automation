@@ -1,5 +1,3 @@
-"""Stage 2: Document Setup Normalization (Trim size, Margins, Bleeds)."""
-
 from pathlib import Path
 from .base_stage import PipelineStage
 

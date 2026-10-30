@@ -1,9 +1,3 @@
-"""Audit: figure captions must appear exactly ONCE (below the image), never
-duplicated (e.g. the original caption left at the top AND a second copy below).
-
-check(injected_idml, caption_map) -> list of reason strings (empty = OK).
-caption_map: {imageNNN.jpg: "CAPTION TEXT"} built from the book's EPUB.
-"""
 import re
 import zipfile
 from collections import Counter

@@ -1,5 +1,3 @@
-"""Book: domain model representing an IDML manuscript undergoing production."""
-
 import re
 from dataclasses import dataclass
 from pathlib import Path

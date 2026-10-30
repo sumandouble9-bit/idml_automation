@@ -1,8 +1,3 @@
-"""Shared overset resolver (one place, one routine).
-Adds linked frames/pages while any story overflows; grows a frame only when a
-single unit will not fit. Call it as the final layout act to guarantee no overset.
-"""
-
 JS = 1246973031
 
 JS_RESOLVE_OVERSET = """

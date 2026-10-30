@@ -1,12 +1,3 @@
-"""
-EPUB Style Enricher Module:
-Extracts author-intended inline formatting (bold, italic, underline) from EPUB XHTML
-and synchronizes / enriches IDML stories so that typographic styling is faithfully preserved.
-
-Uses high-precision Paragraph-Aligned Span Projection to achieve 1:1 fidelity with the EPUB,
-eliminating runaway italics and restoring missing inline styling.
-"""
-
 import copy
 import html
 import os

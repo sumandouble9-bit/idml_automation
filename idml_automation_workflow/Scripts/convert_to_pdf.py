@@ -1,20 +1,3 @@
-"""
-Dedicated Standalone PDF Converter Module:
-Converts any IDML document or folder of IDML documents into High-Quality Print PDFs
-using Adobe InDesign COM automation, ensuring all document fonts (Palatino Linotype,
-Gill Sans MT, Bell MT, Minion Pro) are active and embedded with zero font substitution.
-
-Usage:
-    # Convert all files in default injected directory (or Output/):
-    python convert_to_pdf.py
-
-    # Convert a specific IDML file:
-    python convert_to_pdf.py "path/to/my_book.idml"
-
-    # Convert a specific folder to a custom output directory:
-    python convert_to_pdf.py "path/to/folder" --output-dir "Output/pdf_files"
-"""
-
 import argparse
 import os
 import shutil

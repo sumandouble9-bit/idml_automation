@@ -1,8 +1,3 @@
-"""Book Workflow: An automated, modular, object-oriented publishing engine for IDML & InDesign.
-
-Transforms raw IDML manuscript exports into standardized, beautifully typeset, print-ready PDFs.
-"""
-
 __version__ = "2.0.0"
 
 from .workflow import BookWorkflow, Pipeline, main

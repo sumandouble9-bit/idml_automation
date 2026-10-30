@@ -1,8 +1,3 @@
-"""Table centering formatting pass.
-
-Separates body text merged into a table paragraph and centers narrow tables within the column.
-"""
-
 JS = 1246973031
 
 _JS = r"""

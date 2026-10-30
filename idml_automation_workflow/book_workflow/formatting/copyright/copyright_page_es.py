@@ -1,38 +1,3 @@
-"""
-Spanish Copyright Page Module:
-- Dedicated copyright page formatter for Spanish IDML books.
-- Extracts book title, subtitle, author, copyright year, and ISBN from the target IDML.
-- Clones dedicated Story_u_copyright_story.xml from reference Story_u2a6.xml.
-- Registers Story_u_copyright_story.xml in designmap.xml.
-- Unthreads Page 2 TextFrame from Page 3 TextFrame (PreviousTextFrame="n", NextTextFrame="n"),
-  guaranteeing that copyright text can NEVER spill or overflow onto Page 3.
-- Implements the 5 exact Reference Copyright ParagraphStyleRanges with Spanish localization:
-  1. Verso Title & Subtitle & Author: ParagraphStyle/verso_title
-     - Title (17 pt Bold, Leading 24.4, CenterAlign, Ebrima)
-     - Subtitle (if present: 14 pt Bold, Leading 15, CenterAlign, Ebrima)
-     - Spacer (<Br /> 1 pt, Leading 2.75)
-     - Author ("Por <Author>", 14 pt Bold, Leading 9.1, CenterAlign, Ebrima)
-     - Spacer (<Br /> 13.25 pt, Leading 14.6)
-  2. Legal block: ParagraphStyle/copyright_text (12 pt, Leading 14, CenterAlign)
-     - Copyright © {year}
-     - Reservados todos los derechos.
-     - Ninguna parte de esta publicación puede ser reproducida,
-     - almacenado en un sistema de recuperación o transmitido en cualquier
-     - forma o por cualquier medio, electrónico, mecánico,
-     - fotocopia o cualquier otro medio, sin la autorización por escrito
-     - permiso del editor.
-     - El autor/editor afirma el derecho moral a
-     - ser identificado como el autor/editor de esta obra.
-     - Dynamic {isbn}
-  3. Publicado por: ParagraphStyle/body_text (11 pt Bold, CenterAlign)
-  4. DOUBLE 9 BOOKS: ParagraphStyle/doublenine_books (22 pt Black, CenterAlign)
-  5. Address block: ParagraphStyle/copyright_text (12 pt, Leading 14, CenterAlign)
-     - Address lines
-     - Triple break (<Br /><Br /><Br />)
-     - "Este libro es de dominio público"
-- Removes old copyright paragraphs from main story so main story begins directly with Contents on Page 3.
-"""
-
 import copy
 import re
 import sys

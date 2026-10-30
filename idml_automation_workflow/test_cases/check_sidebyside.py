@@ -1,12 +1,3 @@
-"""Test case: side-by-side image pairs stay on ONE line.
-
-Authoritative pairing signal = the SOURCE input IDML. Side-by-side images are
-encoded there either (a) as a 1-row multi-column table whose cells each hold a
-"###Insert imageNNN###" placeholder, or (b) after step1 flattening, as a single
-paragraph containing >=2 "###Insert" placeholders. This module derives the pairs
-from the source and verifies that in the INJECTED idml both images of a pair are
-anchored inside the SAME paragraph (i.e. not stacked into separate paragraphs).
-"""
 import os, re, zipfile
 
 PH = re.compile(r"###Insert\s+(image\d+)", re.I)

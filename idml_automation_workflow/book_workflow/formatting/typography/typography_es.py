@@ -1,14 +1,3 @@
-"""
-Spanish Typography and Styles Module:
-- Dedicated typography, heading, and body text module for Spanish IDML books.
-- Preserves 100% of table structures, styles, and dimensions.
-- Accurately identifies Spanish chapter titles, prefaces, backmatter, and subheadings.
-- Uses EPUB toc.ncx and document TOC to distinguish Main Headings (separate page) from Subheadings (inline).
-- Applies Palatino Linotype 9.65pt to body text and Gill Sans MT 16pt to headings.
-- Validates underline character styles against EPUB <u> tags to eliminate runaway underlines.
-- Enforces Spanish language tag ($ID/Spanish: Standard) for proper hyphenation.
-"""
-
 import copy
 import html
 import math
