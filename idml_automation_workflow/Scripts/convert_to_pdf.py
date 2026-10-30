@@ -151,28 +151,47 @@ def convert_single_idml(app, idml_path: Path, output_pdf_path: Path) -> dict:
             try {{ pFig.pointSize = 9; }} catch(eS) {{}}
         }}
 
-        // Clear overrides on body paragraphs to remove '+' override symbol and enforce 9.65pt
-        var bodyLookup = {{}};
-        for (var bi = 0; bi < bodyStyles.length; bi++) {{ bodyLookup[bodyStyles[bi]] = true; }}
+        // Clear paragraph overrides across stories to remove '+' override symbol while preserving character formatting
         for (var s = 0; s < doc.stories.length; s++) {{
-            var _st = doc.stories[s];
-            for (var p = 0; p < _st.paragraphs.length; p++) {{
-                try {{
-                    var par = _st.paragraphs[p];
-                    var sName = par.appliedParagraphStyle ? par.appliedParagraphStyle.name : "";
-                    if (bodyLookup[sName]) {{
-                        try {{ par.clearOverrides(OverrideType.CHARACTER_ONLY); }} catch(eCO) {{}}
-                        try {{
-                            if (Math.abs(par.pointSize - 9.65) > 0.05) {{
-                                par.pointSize = 9.65;
-                                par.leading = 12;
-                            }}
-                        }} catch(ePS) {{}}
-                    }}
-                }} catch(ePar) {{}}
-            }}
+            try {{
+                doc.stories[s].clearOverrides(OverrideType.PARAGRAPH_ONLY);
+            }} catch(eCO) {{}}
         }}
     }} catch(eSty) {{}}
+
+    // Ensure dedicated superscript and subscript character styles exist and are Black / non-underlined
+    try {{
+        var _cSup = doc.characterStyles.itemByName("superscript");
+        if (!_cSup || !_cSup.isValid) {{
+            _cSup = doc.characterStyles.add({{name: "superscript"}});
+        }}
+        try {{ _cSup.position = Position.SUPERSCRIPT; }} catch(eP1) {{}}
+        try {{ _cSup.fillColor = "Black"; }} catch(eF1) {{}}
+        try {{ _cSup.underline = false; }} catch(eU1) {{}}
+    }} catch(eSup) {{}}
+    try {{
+        var _cSub = doc.characterStyles.itemByName("subscript");
+        if (!_cSub || !_cSub.isValid) {{
+            _cSub = doc.characterStyles.add({{name: "subscript"}});
+        }}
+        try {{ _cSub.position = Position.SUBSCRIPT; }} catch(eP2) {{}}
+        try {{ _cSub.fillColor = "Black"; }} catch(eF2) {{}}
+        try {{ _cSub.underline = false; }} catch(eU2) {{}}
+    }} catch(eSub) {{}}
+
+    // Remove all hyperlinks and force Hyperlink character style to Black with no underline
+    try {{
+        while (doc.hyperlinks.length > 0) {{
+            try {{ doc.hyperlinks[0].remove(); }} catch(eHl1) {{ break; }}
+        }}
+    }} catch(eHl) {{}}
+    try {{
+        var _hl = doc.characterStyles.itemByName("Hyperlink");
+        if (_hl && _hl.isValid) {{
+            try {{ _hl.underline = false; }} catch(eU) {{}}
+            try {{ _hl.fillColor = "Black"; }} catch(eC) {{}}
+        }}
+    }} catch(eHls) {{}}
 
     try {{
         var _justBody = ["Normal","NormalParagraphStyle","[Normal Paragraph Style]","[Basic Paragraph]","body_text","noindent","noindentj","noindent1","bodytext_noendent","bodytext_Noendent","copybody"];

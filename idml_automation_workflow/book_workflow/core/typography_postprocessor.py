@@ -524,6 +524,33 @@ def postprocess_idml(idml_path: Path) -> dict:
                             for af in list(props):
                                 if lname(af.tag) == "AppliedFont":
                                     af.text = "Palatino Linotype"
+                    elif "hyperlink" in sid.lower():
+                        ps.set("Underline", "false")
+                        ps.set("FillColor", "Swatch/Black")
+                        if props is not None:
+                            for c in list(props):
+                                if lname(c.tag) in ("UnderlineColor", "UnderlineType"):
+                                    props.remove(c)
+
+            # Ensure dedicated superscript and subscript CharacterStyles exist
+            has_sup = any(c.attrib.get("Self") == "CharacterStyle/superscript" for c in sroot.iter() if lname(c.tag) == "CharacterStyle")
+            if not has_sup:
+                ET.SubElement(sroot, "CharacterStyle", {
+                    "Self": "CharacterStyle/superscript",
+                    "Name": "superscript",
+                    "Position": "Superscript",
+                    "FillColor": "Swatch/Black",
+                    "Underline": "false"
+                })
+            has_sub = any(c.attrib.get("Self") == "CharacterStyle/subscript" for c in sroot.iter() if lname(c.tag) == "CharacterStyle")
+            if not has_sub:
+                ET.SubElement(sroot, "CharacterStyle", {
+                    "Self": "CharacterStyle/subscript",
+                    "Name": "subscript",
+                    "Position": "Subscript",
+                    "FillColor": "Swatch/Black",
+                    "Underline": "false"
+                })
             ET.ElementTree(sroot).write(styles_xml, encoding="utf-8", xml_declaration=True)
 
         pref_xml = tmp_dir / "Resources" / "Preferences.xml"
@@ -959,6 +986,42 @@ def postprocess_idml(idml_path: Path) -> dict:
                                 if csr.attrib.get("AppliedLanguage") in ("$ID/Arabic", "$ID/Hebrew"):
                                     del csr.attrib["AppliedLanguage"]
                                     story_changed = True
+
+                                # Strip hyperlink styling: remove link, force Black color, remove underline
+                                # Preserve any legitimate Superscript / Subscript marker!
+                                if "hyperlink" in cstyle.lower():
+                                    if pos == "Superscript":
+                                        csr.set("AppliedCharacterStyle", "CharacterStyle/superscript")
+                                        cstyle = "CharacterStyle/superscript"
+                                    elif pos == "Subscript":
+                                        csr.set("AppliedCharacterStyle", "CharacterStyle/subscript")
+                                        cstyle = "CharacterStyle/subscript"
+                                    else:
+                                        csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
+                                        cstyle = r"CharacterStyle/$ID/[No character style]"
+                                    if "Underline" in csr.attrib:
+                                        del csr.attrib["Underline"]
+                                    if "FillColor" in csr.attrib:
+                                        del csr.attrib["FillColor"]
+                                    story_changed = True
+                                elif pos == "Superscript" and cstyle in ("", r"CharacterStyle/$ID/[No character style]"):
+                                    csr.set("AppliedCharacterStyle", "CharacterStyle/superscript")
+                                    cstyle = "CharacterStyle/superscript"
+                                    story_changed = True
+                                elif pos == "Subscript" and cstyle in ("", r"CharacterStyle/$ID/[No character style]"):
+                                    csr.set("AppliedCharacterStyle", "CharacterStyle/subscript")
+                                    cstyle = "CharacterStyle/subscript"
+                                    story_changed = True
+
+                                # Unwrap HyperlinkTextSource so text is not an active link
+                                for child in list(csr):
+                                    if lname(child.tag) == "HyperlinkTextSource":
+                                        idx = list(csr).index(child)
+                                        csr.remove(child)
+                                        for sub in list(child):
+                                            csr.insert(idx, sub)
+                                            idx += 1
+                                        story_changed = True
 
                                 # Ensure body text font and 9.65pt size on all body text
                                 _ensure_csr_font(csr, "Palatino Linotype", point_size="9.65", leading="12")

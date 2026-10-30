@@ -714,6 +714,33 @@ def postprocess_idml_es(idml_path: Path) -> dict:
                             for af in list(props):
                                 if lname(af.tag) == "AppliedFont":
                                     af.text = "Palatino Linotype"
+                    elif "hyperlink" in sid.lower():
+                        ps.set("Underline", "false")
+                        ps.set("FillColor", "Swatch/Black")
+                        if props is not None:
+                            for c in list(props):
+                                if lname(c.tag) in ("UnderlineColor", "UnderlineType"):
+                                    props.remove(c)
+
+            # Ensure dedicated superscript and subscript CharacterStyles exist
+            has_sup = any(c.attrib.get("Self") == "CharacterStyle/superscript" for c in sroot.iter() if lname(c.tag) == "CharacterStyle")
+            if not has_sup:
+                ET.SubElement(sroot, "CharacterStyle", {
+                    "Self": "CharacterStyle/superscript",
+                    "Name": "superscript",
+                    "Position": "Superscript",
+                    "FillColor": "Swatch/Black",
+                    "Underline": "false"
+                })
+            has_sub = any(c.attrib.get("Self") == "CharacterStyle/subscript" for c in sroot.iter() if lname(c.tag) == "CharacterStyle")
+            if not has_sub:
+                ET.SubElement(sroot, "CharacterStyle", {
+                    "Self": "CharacterStyle/subscript",
+                    "Name": "subscript",
+                    "Position": "Subscript",
+                    "FillColor": "Swatch/Black",
+                    "Underline": "false"
+                })
 
             ET.ElementTree(sroot).write(styles_xml, encoding="utf-8", xml_declaration=True)
 
@@ -978,25 +1005,66 @@ def postprocess_idml_es(idml_path: Path) -> dict:
                                 # 1. Clean runaway Subscript / Superscript
                                 pos = csr.attrib.get("Position", "")
                                 if pos in ("Subscript", "Superscript"):
-                                    raw_text = "".join(e.text or "" for e in csr if lname(e.tag) == "Content")
+                                    raw_text = "".join(e.text or "" for e in csr.iter() if lname(e.tag) == "Content")
                                     c_txt = raw_text.strip()
                                     is_runaway = False
-                                    if len(c_txt) > 5 or " " in raw_text or any(p in raw_text for p in [".", ",", ";", ":", "\u2028", "\r", "\n"]):
+                                    if not c_txt:
                                         is_runaway = True
-                                    elif pos == "Subscript" and not c_txt.isdigit():
-                                        is_runaway = True
-                                    elif pos == "Superscript" and not (bool(re.match(r"^\[?\d{1,5}[a-z]?\]?$", c_txt)) or c_txt in ("*", "†", "‡", "§", "#", "er", "o", "a", "os", "as", "°")):
-                                        is_runaway = True
+                                    elif pos == "Superscript":
+                                        is_note = bool(re.match(r"^\[?\d{1,5}[a-z]?\]?$", c_txt)) or c_txt.lower() in ("*", "†", "‡", "§", "#", "st", "nd", "rd", "th", "d", "e", "er", "re", "o", "a", "os", "as", "°")
+                                        if not is_note:
+                                            is_runaway = True
+                                    elif pos == "Subscript":
+                                        is_sub = bool(re.match(r"^\d{1,3}$", c_txt)) or c_txt.lower() in ("ab", "x1", "x2", "t1", "t2")
+                                        if not is_sub:
+                                            is_runaway = True
 
                                     if is_runaway:
                                         del csr.attrib["Position"]
                                         pos = ""
-                                        stats["runaway_sub_sup_cleaned"] += 1
+                                        stats["runaway_sub_sup_cleaned"] = stats.get("runaway_sub_sup_cleaned", 0) + 1
                                         story_changed = True
 
                                 if csr.attrib.get("AppliedLanguage") in ("$ID/Arabic", "$ID/Hebrew"):
                                     del csr.attrib["AppliedLanguage"]
                                     story_changed = True
+
+                                # Strip hyperlink styling: remove link, force Black color, remove underline
+                                # Preserve any legitimate Superscript / Subscript marker!
+                                cstyle = csr.attrib.get("AppliedCharacterStyle", "")
+                                if "hyperlink" in cstyle.lower():
+                                    if pos == "Superscript":
+                                        csr.set("AppliedCharacterStyle", "CharacterStyle/superscript")
+                                        cstyle = "CharacterStyle/superscript"
+                                    elif pos == "Subscript":
+                                        csr.set("AppliedCharacterStyle", "CharacterStyle/subscript")
+                                        cstyle = "CharacterStyle/subscript"
+                                    else:
+                                        csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
+                                        cstyle = r"CharacterStyle/$ID/[No character style]"
+                                    if "Underline" in csr.attrib:
+                                        del csr.attrib["Underline"]
+                                    if "FillColor" in csr.attrib:
+                                        del csr.attrib["FillColor"]
+                                    story_changed = True
+                                elif pos == "Superscript" and cstyle in ("", r"CharacterStyle/$ID/[No character style]"):
+                                    csr.set("AppliedCharacterStyle", "CharacterStyle/superscript")
+                                    cstyle = "CharacterStyle/superscript"
+                                    story_changed = True
+                                elif pos == "Subscript" and cstyle in ("", r"CharacterStyle/$ID/[No character style]"):
+                                    csr.set("AppliedCharacterStyle", "CharacterStyle/subscript")
+                                    cstyle = "CharacterStyle/subscript"
+                                    story_changed = True
+
+                                # Unwrap HyperlinkTextSource so text is not an active link
+                                for child in list(csr):
+                                    if lname(child.tag) == "HyperlinkTextSource":
+                                        idx = list(csr).index(child)
+                                        csr.remove(child)
+                                        for sub in list(child):
+                                            csr.insert(idx, sub)
+                                            idx += 1
+                                        story_changed = True
 
                                 # 2. Enforce Palatino Linotype 9.65pt on body text
                                 if pos not in ("Superscript", "Subscript"):
