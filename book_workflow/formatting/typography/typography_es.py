@@ -108,8 +108,8 @@ def _normalize_table_content(table_elem, epub_fmt=None):
                             c_txt = "".join(c.text or "" for c in c_csr.iter() if lname(c.tag) == "Content").strip()
                             clean_c = re.sub(r"\s+", " ", c_txt).strip().lower()
 
-                            is_epub_it = bool(clean_c and (clean_c in lower_italics or any(clean_c in it or it in clean_c for it in lower_italics if len(it) >= 3 and len(clean_c) >= 3)))
-                            is_epub_bd = bool(clean_c and (clean_c in lower_bolds or any(clean_c in bd or bd in clean_c for bd in lower_bolds if len(bd) >= 3 and len(clean_c) >= 3)))
+                            is_epub_it = bool(clean_c and clean_c in lower_italics)
+                            is_epub_bd = bool(clean_c and clean_c in lower_bolds)
 
                             if is_epub_it:
                                 c_csr.set("AppliedCharacterStyle", "CharacterStyle/italic")
@@ -121,7 +121,8 @@ def _normalize_table_content(table_elem, epub_fmt=None):
                                 curr_cs = c_csr.attrib.get("AppliedCharacterStyle", "")
                                 if curr_cs in ("CharacterStyle/italicalign", "CharacterStyle/italic"):
                                     c_csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
-                                c_csr.set("FontStyle", "Regular")
+                                if c_csr.attrib.get("FontStyle") in ("Italic", "Bold"):
+                                    c_csr.set("FontStyle", "Regular")
 
 
 def _is_page_break_spacer(element):
@@ -954,6 +955,7 @@ def process_stories(target_dir, book_name=None):
 
         in_preface = False
         in_footnotes = False
+        in_index = False
         last_h1_norm = None
         last_h1_text = None
         last_h1_num = None
@@ -1111,6 +1113,7 @@ def process_stories(target_dir, book_name=None):
             )
             if is_backmatter:
                 in_footnotes = bool(re.search(r"^(NOTAS|FOOT-?NOTES?|NOTES?)\b", ptxt, re.I))
+                in_index = bool(re.search(r"^([ÍI]NDICE|INDEX)\b", ptxt, re.I))
                 in_preface = False
                 parent = parent_map.get(psr)
                 _apply_preface_page_break(psr, parent)
@@ -1178,6 +1181,7 @@ def process_stories(target_dir, book_name=None):
                 if was_separated and book_part:
                     in_preface = False
                     in_footnotes = False
+                    in_index = False
                     parent = parent_map.get(psr)
                     chapters_separated += 1
                     changed = True
@@ -1202,6 +1206,7 @@ def process_stories(target_dir, book_name=None):
                 if is_main:
                     in_preface = False
                     in_footnotes = False
+                    in_index = False
                     parent = parent_map.get(psr)
 
                     curr_h1_num = epub_h1_map.get(norm_p)
@@ -1274,6 +1279,20 @@ def process_stories(target_dir, book_name=None):
                 body_styled += 1
                 continue
 
+            # INDEX Body
+            if in_index and ptxt:
+                psr.set("AppliedParagraphStyle", "ParagraphStyle/body_text")
+                psr.set("Justification", "LeftAlign")
+                psr.set("FirstLineIndent", "0")
+                psr.set("SpaceBefore", "1")
+                psr.set("SpaceAfter", "1")
+                psr.set("AppliedLanguage", "$ID/Spanish: Standard")
+                for csr in psr.iter():
+                    if lname(csr.tag) == "CharacterStyleRange":
+                        _ensure_font_prop(csr, "Palatino Linotype", point_size=9.65, leading=12)
+                changed = True
+                continue
+
             # FOOTNOTES / QUOTES
             is_fn = in_footnotes or "footnote" in pstyle.lower() or ptxt.startswith("{Nota ") or ptxt.startswith("[Nota")
             is_quote = any(k in pstyle.lower() for k in ["quote", "block", "verse", "poem"])
@@ -1331,9 +1350,25 @@ def process_stories(target_dir, book_name=None):
                         del psr.attrib["StartParagraph"]
                     if "ParagraphBreakType" in psr.attrib:
                         del psr.attrib["ParagraphBreakType"]
+                    _is_sep = ptxt.strip() in ("*", "* * *", "***", "•", "• • •", "♦", "♦ ♦ ♦", "—", "——", "§")
+                    _cur_j = psr.attrib.get("Justification")
+                    _is_cent = _cur_j == "CenterAlign" or any(k in pstyle.lower() for k in ["center", "centre"]) or _is_sep
+                    _is_rt = _cur_j == "RightAlign" or any(k in pstyle.lower() for k in ["right", "signature", "signed"])
+                    _has_soft = "\u2028" in ptxt or has_soft_break
+
                     psr.set("AppliedParagraphStyle", "ParagraphStyle/body_text")
-                    psr.set("Justification", "LeftJustified")
-                    psr.set("FirstLineIndent", "18")
+                    if _is_cent:
+                        psr.set("Justification", "CenterAlign")
+                        psr.set("FirstLineIndent", "0")
+                    elif _is_rt:
+                        psr.set("Justification", "RightAlign")
+                        psr.set("FirstLineIndent", "0")
+                    elif _has_soft or in_index:
+                        psr.set("Justification", "LeftAlign")
+                        psr.set("FirstLineIndent", "0")
+                    else:
+                        psr.set("Justification", "LeftJustified")
+                        psr.set("FirstLineIndent", "18")
                     psr.set("SpaceBefore", "1.5")
                     psr.set("SpaceAfter", "3")
                     psr.set("KeepLinesTogether", "true")

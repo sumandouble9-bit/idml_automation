@@ -115,10 +115,12 @@ def update_styles_xml(styles_xml_content: bytes, space_before: str = REF_SPACE_B
             elif name == "Normal" or self_id == "ParagraphStyle/Normal":
                 normal_style = p
             
-            # Remove any StartParagraph on chapter-related paragraph styles so InDesign
-            # does not force a second page break after the spacer paragraph
-            if "StartParagraph" in p.attrib and ("chapter" in name.lower() or "chapter" in self_id.lower()):
-                del p.attrib["StartParagraph"]
+            # Ensure chapter_name and chapter_name01 have StartParagraph="NextPage"
+            # while after_chapter_name_heading has StartParagraph="Anywhere"
+            if ("after_chapter" in name.lower() or "after_chapter" in self_id.lower()):
+                p.set("StartParagraph", "Anywhere")
+            elif ("chapter_name" in name.lower() or "chapter_name" in self_id.lower()) and "master" not in self_id.lower():
+                p.set("StartParagraph", "NextPage")
 
             # Front matter: TOC heading style
             if name == "about_the_autherh" or self_id == "ParagraphStyle/about_the_autherh":
@@ -169,7 +171,7 @@ def update_styles_xml(styles_xml_content: bytes, space_before: str = REF_SPACE_B
         chapter_style.set("SpaceBefore", str(space_before))
         chapter_style.set("SpaceAfter", str(space_after))
         chapter_style.set("FontStyle", "Bold")
-        chapter_style.set("StartParagraph", "Anywhere")
+        chapter_style.set("StartParagraph", "NextPage")
     else:
         # Create chapter_name style based on Sub-heading
         parent = root.find(".//RootParagraphStyleGroup") or root
@@ -181,7 +183,7 @@ def update_styles_xml(styles_xml_content: bytes, space_before: str = REF_SPACE_B
             "FontStyle": "Bold",
             "Justification": "CenterAlign",
             "PointSize": REF_POINT_SIZE,
-            "StartParagraph": "Anywhere",
+            "StartParagraph": "NextPage",
         })
         props = ET.SubElement(chapter_style, "Properties")
         ET.SubElement(props, "BasedOn", {"type": "object"}).text = "ParagraphStyle/Sub-heading"
@@ -558,7 +560,10 @@ def process_story(story_xml_content: bytes) -> tuple[bytes, bool, int]:
                     
             # Normalize chapter heading attributes
             psr.set("AppliedParagraphStyle", "ParagraphStyle/chapter_name")
-            psr.set("StartParagraph", "Anywhere")
+            if not has_seen_content:
+                psr.set("StartParagraph", "Anywhere")
+            else:
+                psr.set("StartParagraph", "NextPage")
             psr.set("SpaceBefore", str(space_before))
             psr.set("SpaceAfter", str(space_after))
             psr.set("KeepLinesTogether", "true")
@@ -831,7 +836,10 @@ def resequence_frontmatter_story(story_xml_bytes: bytes) -> tuple[bytes, int]:
                     is_sub_heading_of_part = True
                     
             c_p.set("AppliedParagraphStyle", "ParagraphStyle/chapter_name")
-            c_p.set("StartParagraph", "Anywhere")
+            if not seen_first_chapter:
+                c_p.set("StartParagraph", "Anywhere")
+            else:
+                c_p.set("StartParagraph", "NextPage")
             c_p.set("SpaceBefore", str(REF_SPACE_BEFORE))
             c_p.set("SpaceAfter", str(REF_SPACE_AFTER))
             c_p.set("KeepLinesTogether", "true")

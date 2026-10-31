@@ -960,31 +960,46 @@ def postprocess_idml_es(idml_path: Path) -> dict:
                     ]) or ("publicado por" in txt.lower() and ("double 9" in txt.lower() or "derechos" in txt.lower() or len(txt) < 50))
 
                     if is_body and not is_heading_or_front and txt and not has_table and txt != "\u2028" and "\ufeff" not in txt:
+                        _orig_just = psr.attrib.get("Justification")
+                        _sl = style.lower()
+                        _is_cent = (
+                            _orig_just == "CenterAlign"
+                            or any(k in _sl for k in ("center", "centre"))
+                            or txt.strip() in _SEPARATORS
+                        )
+                        _is_rt = (
+                            _orig_just == "RightAlign"
+                            or any(k in _sl for k in ("right", "signature", "signed"))
+                        )
+                        _has_soft = " " in txt or _is_verse_psr(psr) or _is_true_verse_txt(txt) or _soft_break_would_stretch(txt)
+
                         if style in ("ParagraphStyle/Normal", "ParagraphStyle/$ID/[Basic Paragraph]", "ParagraphStyle/copybody"):
                             psr.set("AppliedParagraphStyle", "ParagraphStyle/body_text")
-                            psr.set("Justification", "LeftAlign" if _is_true_verse_txt(txt) else "LeftJustified")
-                            psr.set("FirstLineIndent", "18")
-                            psr.set("SpaceBefore", "1.5")
-                            psr.set("SpaceAfter", "3")
                             stats["body_paras_restored"] += 1
 
-                        _sl = style.lower()
-                        _cur_just = psr.attrib.get("Justification")
-                        if txt.strip() in _SEPARATORS:
-                            if _cur_just != "CenterAlign":
+                        if _is_cent:
+                            if _orig_just != "CenterAlign":
                                 psr.set("Justification", "CenterAlign")
                                 story_changed = True
-                        elif any(_k in _sl for _k in ("quote", "verse", "block", "poem", "epigraph")):
-                            if _cur_just not in ("CenterAlign", "RightAlign"):
+                            psr.set("FirstLineIndent", "0")
+                        elif _is_rt:
+                            if _orig_just != "RightAlign":
+                                psr.set("Justification", "RightAlign")
+                                story_changed = True
+                            psr.set("FirstLineIndent", "0")
+                        elif _has_soft or any(_k in _sl for _k in ("quote", "verse", "block", "poem", "epigraph")):
+                            if _orig_just != "LeftAlign":
                                 psr.set("Justification", "LeftAlign")
                                 story_changed = True
-                        elif _is_verse_psr(psr) or _soft_break_would_stretch(txt):
-                            if _cur_just in ("LeftJustified", "FullyJustified"):
-                                psr.set("Justification", "LeftAlign")
+                            psr.set("FirstLineIndent", "0")
+                        else:
+                            if _orig_just != "LeftJustified":
+                                psr.set("Justification", "LeftJustified")
                                 story_changed = True
-                        elif "cent" not in _sl and _cur_just not in ("CenterAlign", "RightAlign"):
-                            psr.set("Justification", "LeftJustified")
-                            story_changed = True
+                            psr.set("FirstLineIndent", "18")
+
+                        psr.set("SpaceBefore", "1.5")
+                        psr.set("SpaceAfter", "3")
                         psr.set("KeepLinesTogether", "true")
                         psr.set("KeepFirstAndLastLines", "true")
                         psr.set("MinLinesAtStart", "2")

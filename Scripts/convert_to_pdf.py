@@ -134,12 +134,6 @@ def convert_single_idml(app, idml_path: Path, output_pdf_path: Path) -> dict:
             try {{ pFig.pointSize = 9; }} catch(eS) {{}}
         }}
 
-        // Clear paragraph overrides across stories to remove '+' override symbol while preserving character formatting
-        for (var s = 0; s < doc.stories.length; s++) {{
-            try {{
-                doc.stories[s].clearOverrides(OverrideType.PARAGRAPH_ONLY);
-            }} catch(eCO) {{}}
-        }}
     }} catch(eSty) {{}}
 
     // Ensure dedicated superscript and subscript character styles exist and are Black / non-underlined

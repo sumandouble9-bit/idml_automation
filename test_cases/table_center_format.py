@@ -40,36 +40,49 @@ for (var s = 0; s < doc.stories.length; s++){
     for (var t = 0; t < tbs.length; t++){
         try {
             var tb = tbs[t];
-            var tpara = tb.storyOffset.paragraphs[0];
-            var chars = tpara.characters;
-            var tIdx = tb.storyOffset.index;
-            var afterTable = null;
-            if (tIdx < chars.length - 1){
-                var remaining = tpara.characters.itemByRange(tIdx + 1, chars.length - 1);
-                var remTxt = "";
-                try { remTxt = remaining.texts[0].contents.replace(/[\r\n\s]+/g, ""); } catch(eR){}
-                if (remTxt.length > 0){
-                    var insPt = tpara.insertionPoints[chars.length];
-                    afterTable = remTxt;
-                }
+            var hasImg = false;
+            for (var c0 = 0; c0 < tb.cells.length && !hasImg; c0++){
+                try { if (tb.cells[c0].allGraphics.length > 0) hasImg = true; } catch (eH) {}
             }
-            if (afterTable){
+            if (hasImg) continue;
+
+            var tpara = tb.storyOffset.paragraphs[0];
+            var stOffset = tb.storyOffset.index;
+            var pStart = tpara.insertionPoints[0].index;
+            var pEnd = tpara.insertionPoints[tpara.insertionPoints.length - 1].index;
+
+            if (stOffset + 1 < pEnd) {
                 try {
-                    tb.storyOffset.insertionPoints[0].parentStory.characters.item(tIdx).insertionPoints[1].contents = "\r";
+                    tb.storyOffset.parentStory.insertionPoints[stOffset + 1].contents = "\r";
                     split++;
                     tpara = tb.storyOffset.paragraphs[0];
-                    var nextPara = tb.storyOffset.parentStory.characters.item(tIdx + 1).paragraphs[0];
-                    if (nextPara && nextPara.isValid){
-                        try { nextPara.leftIndent = 0; } catch(eI){}
-                        if (bodyStyle){ try { nextPara.appliedParagraphStyle = bodyStyle; } catch(eS){} }
+                    var nextPara = tb.storyOffset.parentStory.insertionPoints[stOffset + 2].paragraphs[0];
+                    if (nextPara && nextPara.isValid && nextPara != tpara) {
+                        try { nextPara.leftIndent = 0; } catch (eI) {}
+                        try { nextPara.firstLineIndent = 18; } catch (eFL) {}
+                        if (bodyStyle && bodyStyle.isValid) { try { nextPara.appliedParagraphStyle = bodyStyle; } catch (eS) {} }
                     }
-                } catch(eSplit){}
+                } catch (eSplit) {}
             }
+
+            if (stOffset > pStart) {
+                try {
+                    tb.storyOffset.contents = "\r";
+                    split++;
+                    tpara = tb.storyOffset.paragraphs[0];
+                } catch (eSplitPre) {}
+            }
+
+            try { tpara.firstLineIndent = 0; } catch (eF) {}
             var tw = tblWidth(tb);
             var colW = usableWidthFor(tb);
             var leftover = colW - tw;
-            if (leftover >= MIN_SPACE){ try { tpara.leftIndent = leftover / 2; centered++; } catch(eC){} }
-            else { try { tpara.leftIndent = 0; } catch(eZ){} }
+            var isNarrow = (leftover >= 6) || (tb.columns.length <= 2 && leftover > 4);
+            if (isNarrow && leftover > 0) {
+                try { tpara.leftIndent = leftover / 2; centered++; } catch (eC) {}
+            } else {
+                try { tpara.leftIndent = 0; } catch (eZ) {}
+            }
         } catch(eT){}
     }
 }

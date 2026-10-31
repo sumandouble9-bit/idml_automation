@@ -1236,10 +1236,10 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     log_data.append(f"Logo injection pass skipped: {e_logo}")
 
                 try:
-                    scripts_core_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Scripts")
-                    if scripts_core_dir not in sys.path:
-                        sys.path.insert(0, scripts_core_dir)
-                    from core.toc_synchronizer import sync_toc_via_indesign
+                    try:
+                        from book_workflow.core.toc_synchronizer import sync_toc_via_indesign
+                    except ImportError:
+                        from core.toc_synchronizer import sync_toc_via_indesign
                     toc_sync_count = sync_toc_via_indesign(app)
                     print(f"Live InDesign TOC Sync: {toc_sync_count} entry(ies) synchronized with layout")
                     log_data.append(f"TOC sync: {toc_sync_count} entries synchronized")

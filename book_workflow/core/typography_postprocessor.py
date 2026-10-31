@@ -895,37 +895,46 @@ def postprocess_idml(idml_path: Path) -> dict:
                     ]) or ("published by" in txt.lower() and ("double 9" in txt.lower() or "copyright" in txt.lower() or len(txt) < 50))
 
                     if is_body_like and not is_heading_or_front and txt and not rects and txt != "\u2028" and "\ufeff" not in txt:
+                        _orig_just = psr.attrib.get("Justification")
+                        _sl = style.lower()
+                        _is_cent = (
+                            _orig_just == "CenterAlign"
+                            or any(k in _sl for k in ("center", "centre"))
+                            or txt.strip() in _SEPARATORS
+                        )
+                        _is_rt = (
+                            _orig_just == "RightAlign"
+                            or any(k in _sl for k in ("right", "signature", "signed"))
+                        )
+                        _has_soft = " " in txt or _is_verse_psr(psr) or _is_true_verse_txt(txt) or _soft_break_would_stretch(txt)
+
                         if style in ("ParagraphStyle/Normal", "ParagraphStyle/$ID/[Basic Paragraph]", "ParagraphStyle/copybody"):
                             psr.set("AppliedParagraphStyle", "ParagraphStyle/body_text")
-                            psr.set("Justification", "LeftAlign" if _is_true_verse_txt(txt) else "LeftJustified")
-                            psr.set("FirstLineIndent", "18")
-                            psr.set("SpaceBefore", "1.5")
-                            psr.set("SpaceAfter", "3")
                             stats["body_paras_restored"] += 1
 
-                        _sl = style.lower()
-                        _cur_just = psr.attrib.get("Justification")
-                        if txt.strip() in _SEPARATORS:
-                            # Stanza / section separators ("*", "* * *") are centered.
-                            if _cur_just != "CenterAlign":
+                        if _is_cent:
+                            if _orig_just != "CenterAlign":
                                 psr.set("Justification", "CenterAlign")
                                 story_changed = True
-                        elif any(_k in _sl for _k in ("quote", "verse", "block", "poem", "epigraph")):
-                            # Block / quote / verse styles are ALWAYS ragged-left (quotes_normal
-                            # contains "normal", so it would otherwise be justified).
-                            if _cur_just not in ("CenterAlign", "RightAlign"):
+                            psr.set("FirstLineIndent", "0")
+                        elif _is_rt:
+                            if _orig_just != "RightAlign":
+                                psr.set("Justification", "RightAlign")
+                                story_changed = True
+                            psr.set("FirstLineIndent", "0")
+                        elif _has_soft or any(_k in _sl for _k in ("quote", "verse", "block", "poem", "epigraph")):
+                            if _orig_just != "LeftAlign":
                                 psr.set("Justification", "LeftAlign")
                                 story_changed = True
-                        elif _is_verse_psr(psr) or _soft_break_would_stretch(txt):
-                            # Verse, or any paragraph holding a soft line break ( ):
-                            # these stretch badly when justified (unlike <Br> paragraph
-                            # breaks). Keep centered if already centered, else ragged-left.
-                            if _cur_just not in ("CenterAlign", "RightAlign"):
-                                psr.set("Justification", "LeftAlign")
+                            psr.set("FirstLineIndent", "0")
+                        else:
+                            if _orig_just != "LeftJustified":
+                                psr.set("Justification", "LeftJustified")
                                 story_changed = True
-                        elif "cent" not in _sl and _cur_just not in ("CenterAlign", "RightAlign"):
-                            psr.set("Justification", "LeftJustified")
-                            story_changed = True
+                            psr.set("FirstLineIndent", "18")
+
+                        psr.set("SpaceBefore", "1.5")
+                        psr.set("SpaceAfter", "3")
                         psr.set("KeepLinesTogether", "true")
                         psr.set("KeepFirstAndLastLines", "true")
                         psr.set("MinLinesAtStart", "2")
@@ -940,7 +949,18 @@ def postprocess_idml(idml_path: Path) -> dict:
                                 cstyle = csr.attrib.get("AppliedCharacterStyle", "")
                                 is_bold = "bold" in cstyle.lower()
                                 is_italic = "italic" in cstyle.lower()
-                                if not is_bold and not is_italic:
+                                raw_c_txt = "".join(e.text or "" for e in csr.iter() if lname(e.tag) == "Content").strip()
+                                if is_italic and len(raw_c_txt) > 80:
+                                    csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
+                                    csr.set("FontStyle", "Regular")
+                                    cstyle = r"CharacterStyle/$ID/[No character style]"
+                                    story_changed = True
+                                elif is_bold and len(raw_c_txt) > 80:
+                                    csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
+                                    csr.set("FontStyle", "Regular")
+                                    cstyle = r"CharacterStyle/$ID/[No character style]"
+                                    story_changed = True
+                                elif not is_bold and not is_italic:
                                     csr.set("FontStyle", "Regular")
 
                                 # Clean runaway Subscript / Superscript overrides

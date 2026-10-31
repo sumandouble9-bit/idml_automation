@@ -228,7 +228,7 @@ def extract_epub_formatting(epub_path: Path):
     return out
 
 
-def _reconstruct_psr_with_epub_spans(psr, para_map):
+def _reconstruct_psr_with_epub_spans(psr, para_map, lower_italics=None, lower_bolds=None):
     """
     Reconstructs the CharacterStyleRanges of a ParagraphStyleRange by splitting at <Br />
     and aligning each individual paragraph against EPUB para_map with 100% precision.
@@ -357,10 +357,22 @@ def _reconstruct_psr_with_epub_spans(psr, para_map):
                 cnt.text = p_text
                 new_csrs.append(csr)
         else:
-            # Unmatched paragraph: preserve original items safely
+            # Unmatched paragraph: clean rogue italics/bolds from long body text paragraphs
+            is_long = len(clean_p) > 60
+            clean_p_lower = clean_p.lower()
+            it_set = lower_italics or set()
+            bd_set = lower_bolds or set()
             for item in para_items:
                 if item[0] == "content":
-                    csr = ET.Element("CharacterStyleRange", dict(item[2].attrib))
+                    csr_attrib = dict(item[2].attrib)
+                    cs = csr_attrib.get("AppliedCharacterStyle", "")
+                    if is_long and "italic" in cs.lower() and clean_p_lower not in it_set:
+                        csr_attrib["AppliedCharacterStyle"] = r"CharacterStyle/$ID/[No character style]"
+                        csr_attrib["FontStyle"] = "Regular"
+                    elif is_long and "bold" in cs.lower() and clean_p_lower not in bd_set:
+                        csr_attrib["AppliedCharacterStyle"] = r"CharacterStyle/$ID/[No character style]"
+                        csr_attrib["FontStyle"] = "Regular"
+                    csr = ET.Element("CharacterStyleRange", csr_attrib)
                     if sample_props is not None:
                         csr.append(copy.deepcopy(sample_props))
                     cnt = ET.SubElement(csr, "Content")
@@ -397,6 +409,7 @@ def enrich_story_character_formatting(story_root, formatting_dict, lang="en"):
     lower_bolds = {re.sub(r"\s+", " ", s).strip().lower() for s in formatting_dict.get("bold", set()) if s}
 
     enriched_count = 0
+    story_changed = False
 
     # -------------------------------------------------------------
     # 1. Normalize Tables: default to Regular font, strip rogue italics, bind to EPUB
@@ -426,22 +439,27 @@ def enrich_story_character_formatting(story_root, formatting_dict, lang="en"):
                     c_txt = "".join(c.text or "" for c in c_csr.iter() if lname(c.tag) == "Content").strip()
                     clean_c = re.sub(r"\s+", " ", c_txt).strip().lower()
 
-                    is_epub_it = bool(clean_c and (clean_c in lower_italics or any(clean_c in it or it in clean_c for it in lower_italics if len(it) >= 3 and len(clean_c) >= 3)))
-                    is_epub_bd = bool(clean_c and (clean_c in lower_bolds or any(clean_c in bd or bd in clean_c for bd in lower_bolds if len(bd) >= 3 and len(clean_c) >= 3)))
+                    is_epub_it = bool(clean_c and clean_c in lower_italics)
+                    is_epub_bd = bool(clean_c and clean_c in lower_bolds)
 
                     if is_epub_it:
                         c_csr.set("AppliedCharacterStyle", "CharacterStyle/italic")
                         c_csr.set("FontStyle", "Italic")
                         enriched_count += 1
+                        story_changed = True
                     elif is_epub_bd:
                         c_csr.set("AppliedCharacterStyle", "CharacterStyle/boldtext")
                         c_csr.set("FontStyle", "Bold")
                         enriched_count += 1
+                        story_changed = True
                     else:
                         curr_cs = c_csr.attrib.get("AppliedCharacterStyle", "")
                         if curr_cs in ("CharacterStyle/italicalign", "CharacterStyle/italic"):
                             c_csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
-                        c_csr.set("FontStyle", "Regular")
+                            story_changed = True
+                        if c_csr.attrib.get("FontStyle") in ("Italic", "Bold"):
+                            c_csr.set("FontStyle", "Regular")
+                            story_changed = True
 
     # -------------------------------------------------------------
     # 2. Normalize Body Paragraphs using Paragraph-Aligned Span Projection
@@ -455,13 +473,14 @@ def enrich_story_character_formatting(story_root, formatting_dict, lang="en"):
         if any(k in p_style.lower() for k in ["chapter", "head", "toc", "title", "copyright", "verso", "author"]):
             continue
 
-        new_csrs, count_applied = _reconstruct_psr_with_epub_spans(psr, para_map)
+        new_csrs, count_applied = _reconstruct_psr_with_epub_spans(psr, para_map, lower_italics=lower_italics, lower_bolds=lower_bolds)
         if new_csrs is not None:
             for ch in list(psr):
                 psr.remove(ch)
             for c in new_csrs:
                 psr.append(c)
             enriched_count += count_applied
+            story_changed = True
 
     # -------------------------------------------------------------
     # 3. Punctuation Boundary Normalization
@@ -501,7 +520,7 @@ def enrich_story_character_formatting(story_root, formatting_dict, lang="en"):
                 if not any(lname(ch.tag) == "Br" for ch in last_csr):
                     ET.SubElement(last_csr, "Br")
 
-    return enriched_count
+    return enriched_count, story_changed
 
 
 def find_matching_epub(book_path_or_name) -> Path:
@@ -562,8 +581,8 @@ def enrich_extracted_idml(extracted_dir: Path, book_name: str = None, epub_path:
         try:
             tree = ET.parse(story_f)
             root = tree.getroot()
-            count = enrich_story_character_formatting(root, fmt, lang=lang)
-            if count > 0:
+            count, changed = enrich_story_character_formatting(root, fmt, lang=lang)
+            if count > 0 or changed:
                 tree.write(story_f, encoding="utf-8", xml_declaration=True)
                 total_enriched += count
         except Exception as e:

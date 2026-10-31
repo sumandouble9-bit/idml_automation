@@ -380,8 +380,8 @@ def _normalize_table_content(table_elem, epub_fmt=None):
                             c_txt = "".join(c.text or "" for c in c_csr.iter() if lname(c.tag) == "Content").strip()
                             clean_c = re.sub(r"\s+", " ", c_txt).strip().lower()
 
-                            is_epub_it = bool(clean_c and (clean_c in lower_italics or any(clean_c in it or it in clean_c for it in lower_italics if len(it) >= 3 and len(clean_c) >= 3)))
-                            is_epub_bd = bool(clean_c and (clean_c in lower_bolds or any(clean_c in bd or bd in clean_c for bd in lower_bolds if len(bd) >= 3 and len(clean_c) >= 3)))
+                            is_epub_it = bool(clean_c and clean_c in lower_italics)
+                            is_epub_bd = bool(clean_c and clean_c in lower_bolds)
 
                             if is_epub_it:
                                 c_csr.set("AppliedCharacterStyle", "CharacterStyle/italic")
@@ -393,7 +393,8 @@ def _normalize_table_content(table_elem, epub_fmt=None):
                                 curr_cs = c_csr.attrib.get("AppliedCharacterStyle", "")
                                 if curr_cs in ("CharacterStyle/italicalign", "CharacterStyle/italic"):
                                     c_csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
-                                c_csr.set("FontStyle", "Regular")
+                                if c_csr.attrib.get("FontStyle") in ("Italic", "Bold"):
+                                    c_csr.set("FontStyle", "Regular")
 
 
 
@@ -779,6 +780,12 @@ def process_stories(target_dir, book_name=None):
     except Exception:
         pass
 
+    lower_italics = set()
+    lower_bolds = set()
+    if epub_fmt:
+        lower_italics = {re.sub(r"\s+", " ", s).strip().lower() for s in epub_fmt.get("italic", set()) if s}
+        lower_bolds = {re.sub(r"\s+", " ", s).strip().lower() for s in epub_fmt.get("bold", set()) if s}
+
     for sp in sorted(stories_dir.glob("*.xml")):
         # NEVER touch dedicated Title Page or Copyright Page stories!
         if (
@@ -812,6 +819,7 @@ def process_stories(target_dir, book_name=None):
         preface_para_count = 0
         needs_page_break_after_preface = False
         in_footnotes = False
+        in_index = False
         last_h1_norm = None
         last_h1_text = None
         last_h1_num = None
@@ -1111,6 +1119,7 @@ def process_stories(target_dir, book_name=None):
             )
             if is_backmatter:
                 in_footnotes = bool(re.search(r"^(NOTAS|FOOT-?NOTES?|NOTES?)\b", ptxt, re.I))
+                in_index = bool(re.search(r"^INDEX\b", ptxt, re.I))
                 in_preface = False
                 parent = parent_map.get(psr)
                 _apply_preface_page_break(psr, parent)
@@ -1350,6 +1359,19 @@ def process_stories(target_dir, book_name=None):
                 changed = True
                 continue
 
+            # INDEX Body
+            if in_index and ptxt:
+                psr.set("AppliedParagraphStyle", "ParagraphStyle/body_text")
+                psr.set("Justification", "LeftAlign")
+                psr.set("FirstLineIndent", "0")
+                psr.set("SpaceBefore", "1")
+                psr.set("SpaceAfter", "1")
+                for csr in psr.iter():
+                    if lname(csr.tag) == "CharacterStyleRange":
+                        _ensure_font_prop(csr, "Palatino Linotype", point_size=9.65, leading=12)
+                changed = True
+                continue
+
             # -------------------------------------------------------------
             # Task 19: Footnotes Formatting (Reference Layout Preservation)
             # -------------------------------------------------------------
@@ -1405,9 +1427,25 @@ def process_stories(target_dir, book_name=None):
                         del psr.attrib["StartParagraph"]
                     if "ParagraphBreakType" in psr.attrib:
                         del psr.attrib["ParagraphBreakType"]
+                    _is_sep = ptxt.strip() in ("*", "* * *", "***", "•", "• • •", "♦", "♦ ♦ ♦", "—", "——", "§")
+                    _cur_j = psr.attrib.get("Justification")
+                    _is_cent = _cur_j == "CenterAlign" or any(k in pstyle.lower() for k in ["center", "centre"]) or _is_sep
+                    _is_rt = _cur_j == "RightAlign" or any(k in pstyle.lower() for k in ["right", "signature", "signed"])
+                    _has_soft = "\u2028" in ptxt or has_soft_break
+
                     psr.set("AppliedParagraphStyle", "ParagraphStyle/body_text")
-                    psr.set("Justification", "LeftJustified")
-                    psr.set("FirstLineIndent", "18")
+                    if _is_cent:
+                        psr.set("Justification", "CenterAlign")
+                        psr.set("FirstLineIndent", "0")
+                    elif _is_rt:
+                        psr.set("Justification", "RightAlign")
+                        psr.set("FirstLineIndent", "0")
+                    elif _has_soft or in_index:
+                        psr.set("Justification", "LeftAlign")
+                        psr.set("FirstLineIndent", "0")
+                    else:
+                        psr.set("Justification", "LeftJustified")
+                        psr.set("FirstLineIndent", "18")
                     psr.set("SpaceBefore", "1.5")
                     psr.set("SpaceAfter", "3")
                     psr.set("KeepLinesTogether", "true")
@@ -1599,16 +1637,30 @@ def process_stories(target_dir, book_name=None):
                     cstyle = canonical
                     changed = True
 
-                # Apply bold
-                if "bold" in cstyle.lower() or csr.attrib.get("FontStyle") == "Bold":
-                    csr.set("FontStyle", "Bold")
-                    bold_fixed += 1
+                # Apply bold only if legitimate (EPUB match or short heading/lead-in)
+                is_bold_cand = "bold" in cstyle.lower() or csr.attrib.get("FontStyle") == "Bold"
+                if is_bold_cand:
+                    c_clean = ctxt.replace("\xa0", " ").strip().lower()
+                    if epub_fmt and len(c_clean) > 60 and c_clean not in lower_bolds:
+                        csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
+                        csr.set("FontStyle", "Regular")
+                        cstyle = r"CharacterStyle/$ID/[No character style]"
+                    else:
+                        csr.set("FontStyle", "Bold")
+                        bold_fixed += 1
                     changed = True
 
-                # Apply italic
-                if "italic" in cstyle.lower() or csr.attrib.get("FontStyle") == "Italic":
-                    csr.set("FontStyle", "Italic")
-                    italic_fixed += 1
+                # Apply italic only if legitimate (EPUB match or short phrase)
+                is_it_cand = "italic" in cstyle.lower() or csr.attrib.get("FontStyle") == "Italic"
+                if is_it_cand:
+                    c_clean = ctxt.replace("\xa0", " ").strip().lower()
+                    if epub_fmt and len(c_clean) > 60 and c_clean not in lower_italics:
+                        csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
+                        csr.set("FontStyle", "Regular")
+                        cstyle = r"CharacterStyle/$ID/[No character style]"
+                    else:
+                        csr.set("FontStyle", "Italic")
+                        italic_fixed += 1
                     changed = True
 
                 # Task 8, 15, 17: Underline Handling & Leaked Underline Cleanup

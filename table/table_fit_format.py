@@ -568,19 +568,40 @@ def _center_narrow_tables(app):
                 // table is genuinely narrower than the column.
                 try { tb.spaceBefore = TABLE_GAP; } catch (eSB) {}
                 try { tb.spaceAfter  = TABLE_GAP; } catch (eSA) {}
-                var para = tb.storyOffset.paragraphs[0];
-                try { para.firstLineIndent = 0; } catch (eF) {}
-                // If body text shares the table's paragraph (a merged last-cell value
-                // plus following narrative), a centring left indent would push that
-                // text in too. Keep such paragraphs flush-left so the body stays at the
-                // margin; only centre a paragraph that holds the table alone.
-                var paraChars = 0; try { paraChars = para.characters.length; } catch (eCC) {}
-                if (leftover < MIN_SPACE || paraChars > 20) {
-                    try { para.leftIndent = 0; } catch (eI0) {}   // flush to margin
-                    continue;
+
+                var tpara = tb.storyOffset.paragraphs[0];
+                var stOffset = tb.storyOffset.index;
+                var pStart = tpara.insertionPoints[0].index;
+                var pEnd = tpara.insertionPoints[tpara.insertionPoints.length - 1].index;
+
+                if (stOffset + 1 < pEnd) {
+                    try {
+                        tb.storyOffset.parentStory.insertionPoints[stOffset + 1].contents = "\r";
+                        tpara = tb.storyOffset.paragraphs[0];
+                        var nextPara = tb.storyOffset.parentStory.insertionPoints[stOffset + 2].paragraphs[0];
+                        if (nextPara && nextPara.isValid && nextPara != tpara) {
+                            try { nextPara.leftIndent = 0; } catch (eI) {}
+                            try { nextPara.firstLineIndent = 18; } catch (eFL) {}
+                            var _bStyle = doc.paragraphStyles.itemByName("body_text");
+                            if (_bStyle && _bStyle.isValid) { try { nextPara.appliedParagraphStyle = _bStyle; } catch (eS) {} }
+                        }
+                    } catch (eSplit) {}
                 }
-                try { para.leftIndent  = leftover / 2; } catch (eI) {}
-                centered++;
+
+                if (stOffset > pStart) {
+                    try {
+                        tb.storyOffset.contents = "\r";
+                        tpara = tb.storyOffset.paragraphs[0];
+                    } catch (eSplitPre) {}
+                }
+
+                try { tpara.firstLineIndent = 0; } catch (eF) {}
+                var isNarrow = (leftover >= MIN_SPACE) || (tb.columns.length <= 2 && leftover > 4);
+                if (isNarrow && leftover > 0) {
+                    try { tpara.leftIndent = leftover / 2; centered++; } catch (eI) {}
+                } else {
+                    try { tpara.leftIndent = 0; } catch (eI0) {}
+                }
             } catch (eTbl) {}
         }
     }

@@ -11,71 +11,64 @@ def _ln(tag):
 
 
 def format_styles(root):
-    """Normalizes paragraph styles for chapters to avoid conflicting page breaks."""
+    """Normalizes paragraph styles for chapters to ensure proper page breaks."""
     changed = False
     for ps in root.iter():
         if _ln(ps.tag) != "ParagraphStyle":
             continue
         name = (ps.attrib.get("Name", "") or "").lower()
         self_id = (ps.attrib.get("Self", "") or "").lower()
-        if "chapter" in name or "chapter" in self_id:
-            if ps.attrib.get("StartParagraph") not in (None, "Anywhere"):
+        if "after_chapter_name_heading" in self_id or "after_chapter_name_heading" in name:
+            if ps.attrib.get("StartParagraph") != "Anywhere":
                 ps.set("StartParagraph", "Anywhere")
+                changed = True
+        elif ("chapter_name" in self_id or "chapter_name" in name) and "master" not in self_id and "after" not in self_id:
+            if ps.attrib.get("StartParagraph") != "NextPage":
+                ps.set("StartParagraph", "NextPage")
                 changed = True
     return changed
 
 
 def format_stories(root):
-    """Ensures chapter headings are preceded by a clean spacer paragraph so they start on a fresh page."""
+    """Ensures chapter headings start on a fresh page without creating double blank pages."""
     changed = False
     parent_map = {c: p for p in root.iter() for c in p}
 
+    # Identify all chapter headings in this story
+    chapter_psrs = []
     for psr in list(root.iter()):
         if _ln(psr.tag) != "ParagraphStyleRange":
             continue
         style = (psr.attrib.get("AppliedParagraphStyle", "") or "").lower()
-        if "chapter_name" in style or style.endswith("/master_chapter_name"):
-            parent = parent_map.get(psr)
-            if parent is not None:
-                kids = list(parent)
-                if psr in kids:
-                    idx = kids.index(psr)
-                    if idx > 0:
-                        prev = kids[idx - 1]
-                        has_rect = any(_ln(c.tag) == "Rectangle" for c in prev.iter())
-                        prev_txt = "".join(prev.itertext()).strip()
-                        if has_rect or (prev_txt and prev_txt != "\u2028"):
-                            for csr in prev.iter():
-                                if _ln(csr.tag) == "CharacterStyleRange":
-                                    for c in list(csr):
-                                        if _ln(c.tag) == "Content" and c.text and "\u2028" in c.text:
-                                            c.text = c.text.replace("\u2028", "").strip()
-                                            if not c.text:
-                                                csr.remove(c)
-                                            changed = True
-                            if prev.attrib.get("StartParagraph") == "NextPage":
-                                del prev.attrib["StartParagraph"]
-                                changed = True
+        if ("chapter_name" in style or style.endswith("/master_chapter_name")) and "after" not in style:
+            chapter_psrs.append(psr)
 
-                            spacer = ET.Element("ParagraphStyleRange", {
-                                "AppliedParagraphStyle": "ParagraphStyle/Normal",
-                                "StartParagraph": "NextPage",
-                                "BlankPageSpacer": "true",
-                                "BlankPageProtected": "true",
-                            })
-                            csr = ET.SubElement(spacer, "CharacterStyleRange", {
-                                "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]"
-                            })
-                            cnt = ET.SubElement(csr, "Content")
-                            cnt.text = "\u2028"
-                            ET.SubElement(csr, "Br")
-                            parent.insert(idx, spacer)
-                            parent_map[spacer] = parent
-                            changed = True
-
-            if psr.attrib.get("StartParagraph") not in (None, "Anywhere"):
+    for i, psr in enumerate(chapter_psrs):
+        # The very first chapter heading in the story (e.g. Chapter 1 on recto page 7)
+        # stays on Page 7 with StartParagraph="Anywhere"
+        if i == 0:
+            if psr.attrib.get("StartParagraph") != "Anywhere":
                 psr.set("StartParagraph", "Anywhere")
                 changed = True
+        else:
+            # All subsequent chapter headings (Chapters 2+) must strictly start on NextPage
+            if psr.attrib.get("StartParagraph") != "NextPage":
+                psr.set("StartParagraph", "NextPage")
+                changed = True
+
+        # Remove redundant preceding empty spacer paragraphs that would cause double blank pages
+        parent = parent_map.get(psr)
+        if parent is not None:
+            kids = list(parent)
+            if psr in kids:
+                idx = kids.index(psr)
+                if idx > 0:
+                    prev = kids[idx - 1]
+                    prev_txt = "".join(prev.itertext()).strip()
+                    is_spacer = prev.attrib.get("BlankPageSpacer") == "true" or prev_txt in ("", "\u2028")
+                    if is_spacer and not any(_ln(c.tag) in ("Rectangle", "Polygon", "Oval", "Image", "Table") for c in prev.iter()):
+                        parent.remove(prev)
+                        changed = True
 
     for psr in root.iter():
         if _ln(psr.tag) != "ParagraphStyleRange":
