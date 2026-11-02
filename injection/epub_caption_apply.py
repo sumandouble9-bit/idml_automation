@@ -3,7 +3,7 @@ import win32com.client
 JS = 1246973031
 
 
-def apply_captions(app, caption_map):
+def apply_captions(app, caption_map, caption_styles=None):
     # Place each image's EPUB caption below the image and remove the original caption.
     if not caption_map:
         return "0"
@@ -14,9 +14,13 @@ def apply_captions(app, caption_map):
                  .replace("\r", " ").replace("\n", " "))
     items = ",".join('"%s":"%s"' % (esc(k), esc(v)) for k, v in caption_map.items())
     cap_literal = "{" + items + "}"
+    _cs = caption_styles or {}
+    style_items = ",".join('"%s":"%s"' % (esc(k), esc(v)) for k, v in _cs.items())
+    style_literal = "{" + style_items + "}"
 
     js = r"""
     var CAP = __CAP__;
+    var CAPSTYLE = __CAPSTYLE__;
     var doc = app.activeDocument;
     function isLogo(n){ if(!n) return false; var u=n.toUpperCase(); return u.indexOf("LEAF-BOUND")>=0 || u.indexOf("LOGO")>=0; }
     function norm(s){ return String(s).replace(/[^a-zA-Z0-9]/g, "").toLowerCase(); }
@@ -33,8 +37,28 @@ def apply_captions(app, caption_map):
         try {
             p.appliedParagraphStyle = figStyle();
             p.justification = Justification.CENTER_ALIGN;
-            try { p.appliedCharacterStyle = doc.characterStyles[0]; } catch(eC){}
-            try { p.fontStyle = "Regular"; } catch(eF){}
+            var _emph = CAPSTYLE[norm(p.contents)];
+            try {
+                if (_emph === "bold"){
+                    var _bt = doc.characterStyles.itemByName("boldtext");
+                    if (_bt.isValid){ p.appliedCharacterStyle = _bt; } else { p.appliedCharacterStyle = doc.characterStyles[0]; p.fontStyle = "Bold"; }
+                } else if (_emph === "italic"){
+                    var _it = doc.characterStyles.itemByName("italic");
+                    if (_it.isValid){ p.appliedCharacterStyle = _it; } else { p.appliedCharacterStyle = doc.characterStyles[0]; p.fontStyle = "Italic"; }
+                } else {
+                    p.appliedCharacterStyle = doc.characterStyles[0];
+                    p.fontStyle = "Regular";
+                }
+            } catch(eF){}
+            try {
+                p.spaceBefore = 0; p.spaceAfter = 6;
+                var _pci = p.characters[0].index - 1;
+                if (_pci >= 0){
+                    var _imgPara = p.parentStory.characters[_pci].paragraphs[0];
+                    var _hasImg = false; try { _hasImg = (_imgPara.allPageItems.length > 0); } catch(eHi){}
+                    if (_hasImg){ _imgPara.spaceAfter = 0; }
+                }
+            } catch(eSp){}
             p.pointSize = 9;
             var ws = p.words;
             for (var i=0;i<ws.length;i++){ var t=ws[i].contents; if((t===t.toUpperCase())&&(t!==t.toLowerCase())) ws[i].pointSize = 8; }
@@ -159,11 +183,11 @@ def apply_captions(app, caption_map):
     }
     applied.toString();
     """
-    js = js.replace("__CAP__", cap_literal)
+    js = js.replace("__CAP__", cap_literal).replace("__CAPSTYLE__", style_literal)
     return app.DoScript(js, JS)
 
 
-def cleanup_caption_artifacts(app, caption_map):
+def cleanup_caption_artifacts(app, caption_map, caption_styles=None):
     """SEPARATE final pass. Generic (driven only by each book's own EPUB captions,
     nothing hardcoded). After the caption passes, a packed figure can leave two
     artifacts near an image:
@@ -192,9 +216,13 @@ def cleanup_caption_artifacts(app, caption_map):
                  .replace("\r", " ").replace("\n", " "))
     items = ",".join('"%s":"%s"' % (esc(k), esc(v)) for k, v in caption_map.items())
     cap_literal = "{" + items + "}"
+    _cs = caption_styles or {}
+    style_items = ",".join('"%s":"%s"' % (esc(k), esc(v)) for k, v in _cs.items())
+    style_literal = "{" + style_items + "}"
 
     js = r"""
     var CAP = __CAP__;
+    var CAPSTYLE = __CAPSTYLE__;
     var doc = app.activeDocument;
     function norm(s){ return String(s).replace(/[^a-zA-Z0-9]/g, "").toLowerCase(); }
     function isLogo(n){ if(!n) return false; var u=n.toUpperCase(); return u.indexOf("LEAF-BOUND")>=0 || u.indexOf("LOGO")>=0; }
@@ -292,11 +320,11 @@ def cleanup_caption_artifacts(app, caption_map):
     }
     fixed.toString();
     """
-    js = js.replace("__CAP__", cap_literal)
+    js = js.replace("__CAP__", cap_literal).replace("__CAPSTYLE__", style_literal)
     return app.DoScript(js, JS)
 
 
-def normalize_captions_below_images(app, caption_map):
+def normalize_captions_below_images(app, caption_map, caption_styles=None):
     """FINAL caption pass (runs last). Makes the paragraph directly below every
     captioned image a single, centred "fig caption" paragraph:
 
@@ -320,9 +348,13 @@ def normalize_captions_below_images(app, caption_map):
                  .replace("\r", " ").replace("\n", " "))
     items = ",".join('"%s":"%s"' % (esc(k), esc(v)) for k, v in caption_map.items())
     cap_literal = "{" + items + "}"
+    _cs = caption_styles or {}
+    style_items = ",".join('"%s":"%s"' % (esc(k), esc(v)) for k, v in _cs.items())
+    style_literal = "{" + style_items + "}"
 
     js = r"""
     var CAP = __CAP__;
+    var CAPSTYLE = __CAPSTYLE__;
     var doc = app.activeDocument;
     var LF = 10, CR = String.fromCharCode(13);
     function norm(s){ return String(s).replace(/[^a-zA-Z0-9]/g, "").toLowerCase(); }
@@ -339,8 +371,28 @@ def normalize_captions_below_images(app, caption_map):
         try {
             p.appliedParagraphStyle = figStyle();
             p.justification = Justification.CENTER_ALIGN;
-            try { p.appliedCharacterStyle = doc.characterStyles[0]; } catch(eC){}
-            try { p.fontStyle = "Regular"; } catch(eF){}
+            var _emph = CAPSTYLE[norm(p.contents)];
+            try {
+                if (_emph === "bold"){
+                    var _bt = doc.characterStyles.itemByName("boldtext");
+                    if (_bt.isValid){ p.appliedCharacterStyle = _bt; } else { p.appliedCharacterStyle = doc.characterStyles[0]; p.fontStyle = "Bold"; }
+                } else if (_emph === "italic"){
+                    var _it = doc.characterStyles.itemByName("italic");
+                    if (_it.isValid){ p.appliedCharacterStyle = _it; } else { p.appliedCharacterStyle = doc.characterStyles[0]; p.fontStyle = "Italic"; }
+                } else {
+                    p.appliedCharacterStyle = doc.characterStyles[0];
+                    p.fontStyle = "Regular";
+                }
+            } catch(eF){}
+            try {
+                p.spaceBefore = 0; p.spaceAfter = 6;
+                var _pci = p.characters[0].index - 1;
+                if (_pci >= 0){
+                    var _imgPara = p.parentStory.characters[_pci].paragraphs[0];
+                    var _hasImg = false; try { _hasImg = (_imgPara.allPageItems.length > 0); } catch(eHi){}
+                    if (_hasImg){ _imgPara.spaceAfter = 0; }
+                }
+            } catch(eSp){}
             p.pointSize = 9;
             var ws = p.words;
             for (var i=0;i<ws.length;i++){ var t=ws[i].contents; if((t===t.toUpperCase())&&(t!==t.toLowerCase())) ws[i].pointSize = 8; }
@@ -454,11 +506,11 @@ def normalize_captions_below_images(app, caption_map):
     } catch(eEnf){}
     fixed.toString();
     """
-    js = js.replace("__CAP__", cap_literal)
+    js = js.replace("__CAP__", cap_literal).replace("__CAPSTYLE__", style_literal)
     return app.DoScript(js, JS)
 
 
-def ensure_split_figure_captions(app, caption_map):
+def ensure_split_figure_captions(app, caption_map, caption_styles=None):
     """SEPARATE pass (does not change apply_captions): for a split figure whose two
     pieces sit one directly after the other (e.g. image097 then image098, both
     captioned "Morse and Semaphore Codes."), the FIRST piece has no caption below
@@ -477,9 +529,13 @@ def ensure_split_figure_captions(app, caption_map):
                  .replace("\r", " ").replace("\n", " "))
     items = ",".join('"%s":"%s"' % (esc(k), esc(v)) for k, v in caption_map.items())
     cap_literal = "{" + items + "}"
+    _cs = caption_styles or {}
+    style_items = ",".join('"%s":"%s"' % (esc(k), esc(v)) for k, v in _cs.items())
+    style_literal = "{" + style_items + "}"
 
     js = r"""
     var CAP = __CAP__;
+    var CAPSTYLE = __CAPSTYLE__;
     var doc = app.activeDocument;
     function isLogo(n){ if(!n) return false; var u=n.toUpperCase(); return u.indexOf("LEAF-BOUND")>=0 || u.indexOf("LOGO")>=0; }
     function figStyle(){
@@ -493,8 +549,28 @@ def ensure_split_figure_captions(app, caption_map):
         try {
             p.appliedParagraphStyle = figStyle();
             p.justification = Justification.CENTER_ALIGN;
-            try { p.appliedCharacterStyle = doc.characterStyles[0]; } catch(eC){}
-            try { p.fontStyle = "Regular"; } catch(eF){}
+            var _emph = CAPSTYLE[norm(p.contents)];
+            try {
+                if (_emph === "bold"){
+                    var _bt = doc.characterStyles.itemByName("boldtext");
+                    if (_bt.isValid){ p.appliedCharacterStyle = _bt; } else { p.appliedCharacterStyle = doc.characterStyles[0]; p.fontStyle = "Bold"; }
+                } else if (_emph === "italic"){
+                    var _it = doc.characterStyles.itemByName("italic");
+                    if (_it.isValid){ p.appliedCharacterStyle = _it; } else { p.appliedCharacterStyle = doc.characterStyles[0]; p.fontStyle = "Italic"; }
+                } else {
+                    p.appliedCharacterStyle = doc.characterStyles[0];
+                    p.fontStyle = "Regular";
+                }
+            } catch(eF){}
+            try {
+                p.spaceBefore = 0; p.spaceAfter = 6;
+                var _pci = p.characters[0].index - 1;
+                if (_pci >= 0){
+                    var _imgPara = p.parentStory.characters[_pci].paragraphs[0];
+                    var _hasImg = false; try { _hasImg = (_imgPara.allPageItems.length > 0); } catch(eHi){}
+                    if (_hasImg){ _imgPara.spaceAfter = 0; }
+                }
+            } catch(eSp){}
             p.pointSize = 9;
             var ws = p.words;
             for (var i=0;i<ws.length;i++){ var t=ws[i].contents; if((t===t.toUpperCase())&&(t!==t.toLowerCase())) ws[i].pointSize = 8; }
@@ -532,5 +608,5 @@ def ensure_split_figure_captions(app, caption_map):
     }
     inserted.toString();
     """
-    js = js.replace("__CAP__", cap_literal)
+    js = js.replace("__CAP__", cap_literal).replace("__CAPSTYLE__", style_literal)
     return app.DoScript(js, JS)

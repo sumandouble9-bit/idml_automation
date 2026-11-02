@@ -13,6 +13,26 @@ def _strip_tags(s: str) -> str:
     return s
 
 
+def _norm_key(s: str) -> str:
+    # Match the ExtendScript norm(): keep only alphanumerics, lowercase.
+    return re.sub(r"[^a-zA-Z0-9]", "", s).lower()
+
+
+def _caption_style(inner_html: str) -> str:
+    # Classify a figcaption's emphasis from the EPUB: 'bold', 'italic', or 'normal'.
+    plain = _strip_tags(inner_html)
+    if not plain:
+        return "normal"
+    bold = " ".join(_strip_tags(m) for m in re.findall(r"(?is)<(?:b|strong)[^>]*>(.*?)</(?:b|strong)>", inner_html))
+    ital = " ".join(_strip_tags(m) for m in re.findall(r"(?is)<(?:i|em)[^>]*>(.*?)</(?:i|em)>", inner_html))
+    p_len = len(plain)
+    if p_len and len(bold.strip()) / p_len >= 0.6:
+        return "bold"
+    if p_len and len(ital.strip()) / p_len >= 0.6:
+        return "italic"
+    return "normal"
+
+
 def extract_epub(epub_path: str, images_out_dir: str):
     """Extract images and build the caption map for one EPUB.
 
@@ -22,6 +42,7 @@ def extract_epub(epub_path: str, images_out_dir: str):
     """
     os.makedirs(images_out_dir, exist_ok=True)
     caption_map = {}
+    caption_styles = {}
     image_count = 0
 
     with zipfile.ZipFile(epub_path, "r") as z:
@@ -54,8 +75,9 @@ def extract_epub(epub_path: str, images_out_dir: str):
                 caption = _strip_tags(m_cap.group(1))
                 if img_base and caption:
                     caption_map[img_base] = caption
+                    caption_styles[_norm_key(caption)] = _caption_style(m_cap.group(1))
 
-    return image_count, caption_map
+    return image_count, caption_map, caption_styles
 
 
 def build_caption_map(epub_path: str):
@@ -86,7 +108,7 @@ if __name__ == "__main__":
     ep = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "epub_input_files", "18239.epub")
     out = os.path.join(os.path.dirname(__file__), "extracted_images",
                        os.path.splitext(os.path.basename(ep))[0])
-    cnt, cap = extract_epub(ep, out)
+    cnt, cap, _styles = extract_epub(ep, out)
     print(f"images extracted: {cnt}")
     print(f"captions found: {len(cap)}")
     for k in list(cap)[:10]:

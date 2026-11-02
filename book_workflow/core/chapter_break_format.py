@@ -1,3 +1,4 @@
+import copy
 import os
 import re
 import shutil
@@ -19,6 +20,12 @@ def format_styles(root):
             continue
         name = (ps.attrib.get("Name", "") or "").lower()
         self_id = (ps.attrib.get("Self", "") or "").lower()
+        if name == "body_text" or self_id == "paragraphstyle/body_text":
+            # Injection drops the justified body style back to left; re-assert EPUB justification
+            # (prose paragraphs that must stay ragged carry their own LeftAlign override).
+            if ps.attrib.get("Justification") != "LeftJustified":
+                ps.set("Justification", "LeftJustified")
+                changed = True
         if "after_chapter_name_heading" in self_id or "after_chapter_name_heading" in name:
             if ps.attrib.get("StartParagraph") != "Anywhere":
                 ps.set("StartParagraph", "Anywhere")
@@ -156,6 +163,25 @@ def format_stories(root):
                 changed = True
             continue
 
+        # A standalone sub-heading (an in-text h2, not a true chapter_name) must stay on the
+        # same page as the surrounding prose and never force a page break.
+        style_l = (psr.attrib.get("AppliedParagraphStyle", "") or "").lower()
+        if "sub-heading" in style_l and "chapter_name" not in style_l and "master_chapter" not in style_l:
+            if psr.attrib.get("StartParagraph") not in (None, "Anywhere"):
+                psr.set("StartParagraph", "Anywhere")
+                changed = True
+            if _strip_trailing_break(psr):
+                changed = True
+            prev_child = kids[idx - 1] if idx > 0 else None
+            if (prev_child is not None and _ln(prev_child.tag) == "ParagraphStyleRange"
+                    and not _preceding_has_content(prev_child)):
+                if prev_child.attrib.get("StartParagraph") == "NextPage":
+                    prev_child.set("StartParagraph", "Anywhere")
+                    changed = True
+                if _strip_trailing_break(prev_child):
+                    changed = True
+            continue
+
         # Main chapter heading: must have 14.5 gap
         if psr.attrib.get("SpaceBefore") != "14.5":
             psr.set("SpaceBefore", "14.5")
@@ -230,6 +256,166 @@ def format_stories(root):
     return changed
 
 
+def _direct_text_excluding_tables(psr):
+    """Returns the paragraph's own text, not counting any text inside nested tables."""
+    out = []
+    for csr in psr:
+        if _ln(csr.tag) != "CharacterStyleRange":
+            continue
+        for ch in csr:
+            if _ln(ch.tag) == "Content":
+                out.append(ch.text or "")
+    return "".join(out)
+
+
+def _strip_leading_blank_lines(psr):
+    """Removes blank lines (leading Br / empty Content) at the very start of a paragraph,
+    which a table above often leaves behind as an oversized gap. Stops at the first real
+    content and never touches a Properties element."""
+    changed = False
+    for csr in psr:
+        if _ln(csr.tag) != "CharacterStyleRange":
+            continue
+        for child in list(csr):
+            tag = _ln(child.tag)
+            if tag == "Properties":
+                continue
+            if tag == "Br" or (tag == "Content" and not (child.text or "").strip()):
+                csr.remove(child)
+                changed = True
+                continue
+            return changed
+        if any(_ln(c.tag) == "Table" for c in csr):
+            break
+    return changed
+
+
+def collapse_table_trailing_gap(root):
+    """Collapses the oversized gap a table leaves above the following paragraph.
+
+    A table-only paragraph and the paragraph after it often carry extra blank lines (the
+    paragraph-return under the table, plus leading Br runs at the start of the next
+    paragraph) that push the following prose far below the table. Those blank lines are
+    removed so the gap after a table matches a normal inter-paragraph gap. Paragraphs that
+    carry their own prose alongside a table are left untouched."""
+    changed = False
+    parent_map = {c: p for p in root.iter() for c in p}
+    for psr in list(root.iter()):
+        if _ln(psr.tag) != "ParagraphStyleRange":
+            continue
+        has_table = any(
+            _ln(t.tag) == "Table"
+            for csr in psr if _ln(csr.tag) == "CharacterStyleRange"
+            for t in csr
+        )
+        if not has_table or _direct_text_excluding_tables(psr).strip():
+            continue
+        if psr.attrib.get("SpaceAfter") not in ("0",):
+            psr.set("SpaceAfter", "0")
+            changed = True
+        parent = parent_map.get(psr)
+        if parent is None:
+            continue
+        sibs = list(parent)
+        idx = sibs.index(psr)
+        for k in range(idx + 1, len(sibs)):
+            nxt = sibs[k]
+            if _ln(nxt.tag) == "ParagraphStyleRange":
+                if _strip_leading_blank_lines(nxt):
+                    changed = True
+                break
+    return changed
+
+
+def _split_br_prose_psr(psr):
+    """Splits a body_text paragraph that collapsed several sentence-paragraphs into one PSR
+    (separated by forced line breaks) back into separate paragraphs, so each justifies on its
+    own with a ragged last line. Returns the list of new PSRs, or None when not applicable."""
+    style = (psr.attrib.get("AppliedParagraphStyle", "") or "").lower()
+    if "body_text" not in style:
+        return None
+    if any(_ln(x.tag) in ("Rectangle", "Polygon", "Oval", "Image", "Table") for x in psr.iter()):
+        return None
+    csrs = [c for c in psr if _ln(c.tag) == "CharacterStyleRange"]
+    if not csrs:
+        return None
+    segments = []
+    cur = []
+    for csr in csrs:
+        run = []
+        for ch in csr:
+            if _ln(ch.tag) == "Properties":
+                continue
+            if _ln(ch.tag) == "Br":
+                cur.append((csr, run))
+                segments.append(cur)
+                cur, run = [], []
+            else:
+                run.append(ch)
+        if run:
+            cur.append((csr, run))
+    if cur:
+        segments.append(cur)
+    seg_texts = []
+    for seg in segments:
+        t = "".join(c.text or "" for _, r in seg for c in r if _ln(c.tag) == "Content").strip()
+        seg_texts.append(t)
+    non_empty = [t for t in seg_texts if t]
+    if len(non_empty) < 2:
+        return None
+    end_sent = sum(1 for t in non_empty if t.endswith((".", "!", "?", "»", "”", '"')))
+    avg_len = sum(len(t) for t in non_empty) / len(non_empty)
+    if end_sent / len(non_empty) < 0.6 or avg_len < 40:
+        return None
+    new_psrs = []
+    for seg, t in zip(segments, seg_texts):
+        if not t:
+            continue
+        npsr = ET.Element(psr.tag, dict(psr.attrib))
+        if npsr.attrib.get("Justification") == "LeftAlign":
+            del npsr.attrib["Justification"]
+        for csr, run in seg:
+            ncsr = ET.Element(csr.tag, dict(csr.attrib))
+            props = csr.find("Properties")
+            if props is not None:
+                ncsr.append(copy.deepcopy(props))
+            for ch in run:
+                ncsr.append(copy.deepcopy(ch))
+            npsr.append(ncsr)
+        last = [c for c in npsr if _ln(c.tag) == "CharacterStyleRange"]
+        if last:
+            ET.SubElement(last[-1], "Br")
+        new_psrs.append(npsr)
+    return new_psrs if len(new_psrs) >= 2 else None
+
+
+def split_br_prose_paragraphs(root):
+    """Splits Br-collapsed prose paragraphs across every story container so justified body text
+    no longer stretches forced-break lines (a Spanish-source artifact)."""
+    changed = False
+    for parent in list(root.iter()):
+        kids = list(parent)
+        if not any(_ln(c.tag) == "ParagraphStyleRange" for c in kids):
+            continue
+        rebuilt = []
+        local_changed = False
+        for c in kids:
+            if _ln(c.tag) == "ParagraphStyleRange":
+                res = _split_br_prose_psr(c)
+                if res:
+                    rebuilt.extend(res)
+                    local_changed = True
+                    continue
+            rebuilt.append(c)
+        if local_changed:
+            for c in list(parent):
+                parent.remove(c)
+            for c in rebuilt:
+                parent.append(c)
+            changed = True
+    return changed
+
+
 _fix_styles = format_styles
 _fix_stories = format_stories
 
@@ -264,7 +450,13 @@ def apply_to_idml(idml_path):
                     tree = ET.parse(fp)
                 except ET.ParseError:
                     continue
-                if format_stories(tree.getroot()):
+                root = tree.getroot()
+                story_changed = format_stories(root)
+                if split_br_prose_paragraphs(root):
+                    story_changed = True
+                if collapse_table_trailing_gap(root):
+                    story_changed = True
+                if story_changed:
                     tree.write(fp, xml_declaration=True, encoding="UTF-8")
                     any_changed = True
 

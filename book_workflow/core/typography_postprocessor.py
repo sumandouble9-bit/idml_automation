@@ -949,13 +949,17 @@ def postprocess_idml(idml_path: Path) -> dict:
                                 cstyle = csr.attrib.get("AppliedCharacterStyle", "")
                                 is_bold = "bold" in cstyle.lower()
                                 is_italic = "italic" in cstyle.lower()
+                                # Emphasis the EPUB enricher applied (CharacterStyle/italic,
+                                # CharacterStyle/boldtext) is EPUB-verified and kept at any length;
+                                # only stray long italics/bolds from other styles are flattened.
+                                is_epub_emph = cstyle in ("CharacterStyle/italic", "CharacterStyle/boldtext")
                                 raw_c_txt = "".join(e.text or "" for e in csr.iter() if lname(e.tag) == "Content").strip()
-                                if is_italic and len(raw_c_txt) > 80:
+                                if is_italic and len(raw_c_txt) > 80 and not is_epub_emph:
                                     csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
                                     csr.set("FontStyle", "Regular")
                                     cstyle = r"CharacterStyle/$ID/[No character style]"
                                     story_changed = True
-                                elif is_bold and len(raw_c_txt) > 80:
+                                elif is_bold and len(raw_c_txt) > 80 and not is_epub_emph:
                                     csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
                                     csr.set("FontStyle", "Regular")
                                     cstyle = r"CharacterStyle/$ID/[No character style]"

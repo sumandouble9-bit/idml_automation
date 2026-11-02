@@ -439,15 +439,21 @@ def enrich_story_character_formatting(story_root, formatting_dict, lang="en"):
 
                     curr_cs = c_csr.attrib.get("AppliedCharacterStyle", "")
                     font_st = c_csr.attrib.get("FontStyle", "")
-                    is_cell_it = "italic" in curr_cs.lower() or font_st == "Italic"
-                    is_cell_bd = "bold" in curr_cs.lower() or font_st == "Bold"
+                    # Italic/bold in table cells follow the EPUB, not the source style name.
+                    # (The source often tags whole tables with an "italicalign" style whose name
+                    # merely contains "italic"; only cells whose text is wrapped in <i>/<b> in the
+                    # EPUB should render italic/bold.)
+                    is_cell_it = bool(clean_c) and clean_c in lower_italics
+                    is_cell_bd = bool(clean_c) and clean_c in lower_bolds
 
                     if is_cell_it:
                         c_csr.set("AppliedCharacterStyle", "CharacterStyle/italic")
                         c_csr.set("FontStyle", "Italic")
+                        story_changed = True
                     elif is_cell_bd:
                         c_csr.set("AppliedCharacterStyle", "CharacterStyle/boldtext")
                         c_csr.set("FontStyle", "Bold")
+                        story_changed = True
                     else:
                         if curr_cs in ("CharacterStyle/italicalign", "CharacterStyle/italic", "CharacterStyle/boldtext"):
                             c_csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")

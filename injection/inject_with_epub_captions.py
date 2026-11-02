@@ -166,7 +166,7 @@ def set_body_image_inline_leading(app):
                 var par = frm.parent.paragraphs[0];
                 par.leading = imgH + 4;
                 par.spaceBefore = 6;
-                par.spaceAfter = 6;
+                par.spaceAfter = 0;
                 par.justification = Justification.CENTER_ALIGN;
                 n++;
             } catch (ePar){}
@@ -508,12 +508,13 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
 
                 current_image_folder = os.path.join(base_image_dir, clean_base)
                 caption_map = {}
+                caption_styles = {}
                 epub_path = os.path.join(epub_input_dir, clean_base + ".epub")
                 if not os.path.exists(epub_path):
                     epub_path = os.path.join(epub_input_dir, base_name + ".epub")
                 if os.path.exists(epub_path):
                     try:
-                        n_imgs, caption_map = epub_tools.extract_epub(epub_path, current_image_folder)
+                        n_imgs, caption_map, caption_styles = epub_tools.extract_epub(epub_path, current_image_folder)
                         print(f"EPUB: extracted {n_imgs} image(s), {len(caption_map)} caption(s) from {os.path.basename(epub_path)}")
                         log_data.append(f"EPUB: {n_imgs} images, {len(caption_map)} captions from {os.path.basename(epub_path)}")
                     except Exception as e_epub:
@@ -712,7 +713,7 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                                                         // object settings below.
                                                         aos.anchoredPosition         = AnchorPosition.ABOVE_LINE;
                                                         aos.spaceBefore              = 6;
-                                                        aos.spaceAfter               = 6;
+                                                        aos.spaceAfter               = 0;
                                                         aos.horizontalAlignment      = HorizontalAlignment.CENTER_ALIGN;
                                                         aos.horizontalReferencePoint = AnchoredRelativeTo.COLUMN_EDGE;
                                                     }}
@@ -845,7 +846,7 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     log_data.append("Images: 0 placeholders found.")
 
                 try:
-                    caps_applied = epub_caption_apply.apply_captions(app, caption_map)
+                    caps_applied = epub_caption_apply.apply_captions(app, caption_map, caption_styles)
                     print(f"EPUB captions placed below images: {caps_applied}")
                     log_data.append(f"EPUB captions placed: {caps_applied}")
                 except Exception as e_cap:
@@ -853,7 +854,7 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     log_data.append(f"EPUB caption pass skipped: {e_cap}")
 
                 try:
-                    caps_split = epub_caption_apply.ensure_split_figure_captions(app, caption_map)
+                    caps_split = epub_caption_apply.ensure_split_figure_captions(app, caption_map, caption_styles)
                     print(f"Split-figure captions inserted: {caps_split}")
                     log_data.append(f"Split-figure captions inserted: {caps_split}")
                 except Exception as e_csf:
@@ -861,7 +862,7 @@ def process_batch_idmls(input_dir=None, epub_input_dir=None, output_dir=None, ou
                     log_data.append(f"Split-figure caption pass skipped: {e_csf}")
 
                 try:
-                    caps_clean = epub_caption_apply.cleanup_caption_artifacts(app, caption_map)
+                    caps_clean = epub_caption_apply.cleanup_caption_artifacts(app, caption_map, caption_styles)
                     print(f"Caption artifacts cleaned: {caps_clean}")
                     log_data.append(f"Caption artifacts cleaned: {caps_clean}")
                 except Exception as e_ccl:
