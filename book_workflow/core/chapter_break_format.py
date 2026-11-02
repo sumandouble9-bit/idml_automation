@@ -1,4 +1,5 @@
 import copy
+import io
 import os
 import re
 import shutil
@@ -416,8 +417,89 @@ def split_br_prose_paragraphs(root):
     return changed
 
 
+def fix_apostrophe_glyphs(root):
+    """Restores apostrophes that the source stored as single angle quotes (U+2039/U+203A)
+    between letters (e.g. Elizabeth›s -> Elizabeth’s). Paired ‹ › guillemets
+    around a phrase are left untouched because at least one side borders a non-letter."""
+    changed = False
+    for c in root.iter():
+        if _ln(c.tag) != "Content" or not c.text:
+            continue
+        new = re.sub(r"(?<=[^\W\d_])[‹›](?=[^\W\d_])", "’", c.text)
+        if new != c.text:
+            c.text = new
+            changed = True
+    return changed
+
+
+def _content_text(psr):
+    return "".join(c.text or "" for c in psr.iter() if _ln(c.tag) == "Content")
+
+
+def _norm_alnum(s):
+    return re.sub(r"[^0-9a-z]", "", s.lower())
+
+
+def remove_duplicate_above_captions(root):
+    """Removes a caption that was left ABOVE an image when the same caption is also placed
+    BELOW it (the EPUB caption injection adds the lower one; the stray upper one must go)."""
+    changed = False
+    for parent in list(root.iter()):
+        kids = list(parent)
+        for i, el in enumerate(kids):
+            if _ln(el.tag) != "ParagraphStyleRange":
+                continue
+            if not any(_ln(x.tag) in ("Rectangle", "Image") for x in el.iter()):
+                continue
+            after = None
+            for j in range(i + 1, min(len(kids), i + 3)):
+                if _ln(kids[j].tag) == "ParagraphStyleRange" and _content_text(kids[j]).strip():
+                    after = kids[j]
+                    break
+            before = None
+            for j in range(i - 1, max(-1, i - 3), -1):
+                if _ln(kids[j].tag) == "ParagraphStyleRange":
+                    if any(_ln(x.tag) in ("Rectangle", "Image", "Table") for x in kids[j].iter()):
+                        break
+                    if _content_text(kids[j]).strip():
+                        before = kids[j]
+                        break
+            if after is None or before is None:
+                continue
+            at, bt = _norm_alnum(_content_text(after)), _norm_alnum(_content_text(before))
+            if at and bt and at == bt and len(at) > 8:
+                parent.remove(before)
+                changed = True
+    return changed
+
+
 _fix_styles = format_styles
 _fix_stories = format_stories
+
+
+def restore_footer_page_number(stories_dir):
+    """ElementTree drops the <?ACE 18?> auto-page-number marker on every rewrite. Re-insert it
+    into the master running-foot stories (those carrying the Running Header variable) so page
+    numbers reappear on the content pages that use that master."""
+    changed = False
+    for fn in os.listdir(stories_dir):
+        if not fn.lower().endswith(".xml"):
+            continue
+        fp = os.path.join(stories_dir, fn)
+        try:
+            txt = io.open(fp, encoding="utf-8").read()
+        except Exception:
+            continue
+        if 'Name="Running Header"' not in txt or "<?ACE 18?>" in txt:
+            continue
+        m = re.search(r"(<Content>)([^<]*\|[^<]*)(</Content>)", txt)
+        if not m:
+            continue
+        new = m.group(1) + "<?ACE 18?>" + m.group(2) + m.group(3)
+        txt = txt[:m.start()] + new + txt[m.end():]
+        io.open(fp, "w", encoding="utf-8").write(txt)
+        changed = True
+    return changed
 
 
 def apply_to_idml(idml_path):
@@ -452,6 +534,10 @@ def apply_to_idml(idml_path):
                     continue
                 root = tree.getroot()
                 story_changed = format_stories(root)
+                if fix_apostrophe_glyphs(root):
+                    story_changed = True
+                if remove_duplicate_above_captions(root):
+                    story_changed = True
                 if split_br_prose_paragraphs(root):
                     story_changed = True
                 if collapse_table_trailing_gap(root):
@@ -459,6 +545,8 @@ def apply_to_idml(idml_path):
                 if story_changed:
                     tree.write(fp, xml_declaration=True, encoding="UTF-8")
                     any_changed = True
+            if restore_footer_page_number(stories_dir):
+                any_changed = True
 
         if any_changed:
             tmp_zip = os.path.join(tmpd, "repacked.idml")
