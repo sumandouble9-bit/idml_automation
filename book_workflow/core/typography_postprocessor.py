@@ -306,17 +306,9 @@ def _split_grouped_chapters(story_root):
                     for c in list(new_psr):
                         new_psr.remove(c)
 
-                    # Check if this segment should be paired on the SAME page as preceding heading
-                    is_paired = False
-                    if i > 0:
-                        prev_seg_txt = non_empty_segments[i - 1][1]
-                        is_prev_part = bool(re.match(r"^(?:parte|part|libro|book)\b", prev_seg_txt, re.I))
-                        is_curr_chap = bool(re.match(r"^(?:cap[íi]tulo|chapter)\b", seg_txt, re.I))
-                        is_prev_chap = bool(re.match(r"^(?:cap[íi]tulo|chapter)\b", prev_seg_txt, re.I))
-                        if is_prev_part and is_curr_chap:
-                            is_paired = True
-                        elif is_prev_chap and not is_curr_chap and not is_prev_part:
-                            is_paired = True
+                    # Any segment after the first in a run-on heading introduces the same chapter
+                    # and must remain on the SAME page below the first heading
+                    is_paired = (i > 0)
 
                     if is_paired:
                         new_psr.set("AppliedParagraphStyle", "ParagraphStyle/after_chapter_name_heading")
@@ -381,6 +373,7 @@ def postprocess_idml(idml_path: Path) -> dict:
             for ps in sroot.iter():
                 if lname(ps.tag) == "ParagraphStyle":
                     sid = ps.attrib.get("Self", "")
+                    ps.set("SingleWordJustification", "AlignLeft")
                     if sid in (
                         "ParagraphStyle/body_text",
                         "ParagraphStyle/Normal",
@@ -730,7 +723,13 @@ def postprocess_idml(idml_path: Path) -> dict:
                         psr.set("SpaceBefore", "18")
                         psr.set("SpaceAfter", "12")
                         psr.set("KeepWithNext", "2")
-                        psr.set("KeepLinesTogether", "true")
+                        has_tbl = any(lname(c.tag) == "Table" for c in psr.iter())
+                        if not has_tbl:
+                            psr.set("KeepLinesTogether", "true")
+                        else:
+                            if "KeepLinesTogether" in psr.attrib:
+                                del psr.attrib["KeepLinesTogether"]
+                            psr.set("FirstLineIndent", "0")
                         parent = parent_map.get(psr)
                         if parent is not None:
                             try:
@@ -926,6 +925,7 @@ def postprocess_idml(idml_path: Path) -> dict:
                             if _orig_just != "LeftAlign":
                                 psr.set("Justification", "LeftAlign")
                                 story_changed = True
+                            psr.set("SingleWordJustification", "AlignLeft")
                             psr.set("FirstLineIndent", "0")
                         else:
                             if _orig_just != "LeftJustified":
@@ -1034,12 +1034,16 @@ def postprocess_idml(idml_path: Path) -> dict:
                                 if csr.attrib.get("Underline") == "true":
                                     c_txt = "".join(e.text or "" for e in csr.iter() if lname(e.tag) == "Content")
                                     c_clean = c_txt.replace("\xa0", " ").strip().lower()
-                                    if len(c_clean) > 30 or re.search(r"[.?!]\s+[a-z]", c_clean) or not re.match(
-                                        r"^(?:footnote(?:\s*\d+)?|\d{1,4}|chapter(?:\s+[ivxlcdm0-9]+)?|chapters(?:\s+[ivxlcdm0-9]+)?|[ivxlcdm]{2,}|[-–—]\d+|p\.\s*\d+)$",
+                                    pos_check = csr.attrib.get("Position", "")
+                                    is_fn_marker = bool(re.match(r"^\[?\d{1,5}[a-z]?\]?$", c_clean)) or pos_check in ("Superscript", "Subscript")
+                                    if is_fn_marker or len(c_clean) > 30 or re.search(r"[.?!]\s+[a-z]", c_clean) or not re.match(
+                                        r"^(?:chapter(?:\s+[ivxlcdm0-9]+)?|chapters(?:\s+[ivxlcdm0-9]+)?|[ivxlcdm]{2,})$",
                                         c_clean,
                                         re.I,
                                     ):
                                         del csr.attrib["Underline"]
+                                        if "FillColor" in csr.attrib:
+                                            del csr.attrib["FillColor"]
                                         if "underlin" in cstyle.lower():
                                             csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
                                     else:

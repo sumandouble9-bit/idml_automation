@@ -120,7 +120,7 @@ def update_styles_xml(styles_xml_content: bytes, space_before: str = REF_SPACE_B
             if ("after_chapter" in name.lower() or "after_chapter" in self_id.lower()):
                 p.set("StartParagraph", "Anywhere")
             elif ("chapter_name" in name.lower() or "chapter_name" in self_id.lower()) and "master" not in self_id.lower():
-                p.set("StartParagraph", "NextPage")
+                p.set("StartParagraph", "Anywhere")
 
             # Front matter: TOC heading style
             if name == "about_the_autherh" or self_id == "ParagraphStyle/about_the_autherh":
@@ -171,7 +171,7 @@ def update_styles_xml(styles_xml_content: bytes, space_before: str = REF_SPACE_B
         chapter_style.set("SpaceBefore", str(space_before))
         chapter_style.set("SpaceAfter", str(space_after))
         chapter_style.set("FontStyle", "Bold")
-        chapter_style.set("StartParagraph", "NextPage")
+        chapter_style.set("StartParagraph", "Anywhere")
     else:
         # Create chapter_name style based on Sub-heading
         parent = root.find(".//RootParagraphStyleGroup") or root
@@ -558,12 +558,9 @@ def process_story(story_xml_content: bytes) -> tuple[bytes, bool, int]:
                 ):
                     is_sub_heading_of_part = True
                     
-            # Normalize chapter heading attributes
+            # Normalize chapter heading attributes (page break is on preceding spacer)
             psr.set("AppliedParagraphStyle", "ParagraphStyle/chapter_name")
-            if not has_seen_content:
-                psr.set("StartParagraph", "Anywhere")
-            else:
-                psr.set("StartParagraph", "NextPage")
+            psr.set("StartParagraph", "Anywhere")
             psr.set("SpaceBefore", str(space_before))
             psr.set("SpaceAfter", str(space_after))
             psr.set("KeepLinesTogether", "true")
@@ -582,6 +579,19 @@ def process_story(story_xml_content: bytes) -> tuple[bytes, bool, int]:
                     ET.SubElement(last_csr, "Br")
                     
             if is_sub_heading_of_part:
+                psr.set("AppliedParagraphStyle", "ParagraphStyle/after_chapter_name_heading")
+                psr.set("StartParagraph", "Anywhere")
+                if "ParagraphBreakType" in psr.attrib:
+                    del psr.attrib["ParagraphBreakType"]
+                for csr in psr.findall("CharacterStyleRange"):
+                    if "ParagraphBreakType" in csr.attrib:
+                        del csr.attrib["ParagraphBreakType"]
+                psr.set("SpaceBefore", "14")
+                psr.set("SpaceAfter", str(space_after))
+                psr.set("KeepLinesTogether", "true")
+                psr.set("KeepWithNext", "2")
+                psr.set("Justification", "CenterAlign")
+                psr.set("FirstLineIndent", "0")
                 new_children.append(psr)
                 changed = True
                 i += 1
@@ -616,11 +626,13 @@ def process_story(story_xml_content: bytes) -> tuple[bytes, bool, int]:
                 spacer_psr = ET.Element("ParagraphStyleRange", {
                     "AppliedParagraphStyle": "ParagraphStyle/Normal",
                     "StartParagraph": "NextPage",
+                    "ParagraphBreakType": "NextPage",
                     "BlankPageSpacer": "true",
                     "BlankPageProtected": "true",
                 })
                 csr_spacer = ET.SubElement(spacer_psr, "CharacterStyleRange", {
-                    "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]"
+                    "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]",
+                    "ParagraphBreakType": "NextPage"
                 })
                 cnt = ET.SubElement(csr_spacer, "Content")
                 cnt.text = LS
@@ -836,10 +848,7 @@ def resequence_frontmatter_story(story_xml_bytes: bytes) -> tuple[bytes, int]:
                     is_sub_heading_of_part = True
                     
             c_p.set("AppliedParagraphStyle", "ParagraphStyle/chapter_name")
-            if not seen_first_chapter:
-                c_p.set("StartParagraph", "Anywhere")
-            else:
-                c_p.set("StartParagraph", "NextPage")
+            c_p.set("StartParagraph", "Anywhere")
             c_p.set("SpaceBefore", str(REF_SPACE_BEFORE))
             c_p.set("SpaceAfter", str(REF_SPACE_AFTER))
             c_p.set("KeepLinesTogether", "true")
@@ -856,6 +865,19 @@ def resequence_frontmatter_story(story_xml_bytes: bytes) -> tuple[bytes, int]:
                     ET.SubElement(last_csr, "Br")
                     
             if is_sub_heading_of_part:
+                c_p.set("AppliedParagraphStyle", "ParagraphStyle/after_chapter_name_heading")
+                c_p.set("StartParagraph", "Anywhere")
+                if "ParagraphBreakType" in c_p.attrib:
+                    del c_p.attrib["ParagraphBreakType"]
+                for csr in c_p.findall("CharacterStyleRange"):
+                    if "ParagraphBreakType" in csr.attrib:
+                        del csr.attrib["ParagraphBreakType"]
+                c_p.set("SpaceBefore", "14")
+                c_p.set("SpaceAfter", str(REF_SPACE_AFTER))
+                c_p.set("KeepLinesTogether", "true")
+                c_p.set("KeepWithNext", "2")
+                c_p.set("Justification", "CenterAlign")
+                c_p.set("FirstLineIndent", "0")
                 new_content_psrs.append(c_p)
                 ci += 1
                 continue
@@ -878,11 +900,13 @@ def resequence_frontmatter_story(story_xml_bytes: bytes) -> tuple[bytes, int]:
                 sub_spacer = ET.Element("ParagraphStyleRange", {
                     "AppliedParagraphStyle": "ParagraphStyle/Normal",
                     "StartParagraph": "NextPage",
+                    "ParagraphBreakType": "NextPage",
                     "BlankPageSpacer": "true",
                     "BlankPageProtected": "true",
                 })
                 csr_spacer = ET.SubElement(sub_spacer, "CharacterStyleRange", {
-                    "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]"
+                    "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]",
+                    "ParagraphBreakType": "NextPage"
                 })
                 cnt = ET.SubElement(csr_spacer, "Content")
                 cnt.text = LS

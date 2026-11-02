@@ -298,9 +298,7 @@ def _reconstruct_psr_with_epub_spans(psr, para_map, lower_italics=None, lower_bo
                             intervals.append((idx, idx + len(phrase), stype))
                             last_idx = idx + len(phrase)
                         else:
-                            idx = p_text.find(phrase)
-                            if idx != -1:
-                                intervals.append((idx, idx + len(phrase), stype))
+                            pass
 
                 intervals.sort(key=lambda x: (x[0], -x[1]))
                 non_overlapping = []
@@ -439,25 +437,22 @@ def enrich_story_character_formatting(story_root, formatting_dict, lang="en"):
                     c_txt = "".join(c.text or "" for c in c_csr.iter() if lname(c.tag) == "Content").strip()
                     clean_c = re.sub(r"\s+", " ", c_txt).strip().lower()
 
-                    is_epub_it = bool(clean_c and clean_c in lower_italics)
-                    is_epub_bd = bool(clean_c and clean_c in lower_bolds)
+                    curr_cs = c_csr.attrib.get("AppliedCharacterStyle", "")
+                    font_st = c_csr.attrib.get("FontStyle", "")
+                    is_cell_it = "italic" in curr_cs.lower() or font_st == "Italic"
+                    is_cell_bd = "bold" in curr_cs.lower() or font_st == "Bold"
 
-                    if is_epub_it:
+                    if is_cell_it:
                         c_csr.set("AppliedCharacterStyle", "CharacterStyle/italic")
                         c_csr.set("FontStyle", "Italic")
-                        enriched_count += 1
-                        story_changed = True
-                    elif is_epub_bd:
+                    elif is_cell_bd:
                         c_csr.set("AppliedCharacterStyle", "CharacterStyle/boldtext")
                         c_csr.set("FontStyle", "Bold")
-                        enriched_count += 1
-                        story_changed = True
                     else:
-                        curr_cs = c_csr.attrib.get("AppliedCharacterStyle", "")
-                        if curr_cs in ("CharacterStyle/italicalign", "CharacterStyle/italic"):
+                        if curr_cs in ("CharacterStyle/italicalign", "CharacterStyle/italic", "CharacterStyle/boldtext"):
                             c_csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
                             story_changed = True
-                        if c_csr.attrib.get("FontStyle") in ("Italic", "Bold"):
+                        if font_st in ("Italic", "Bold"):
                             c_csr.set("FontStyle", "Regular")
                             story_changed = True
 

@@ -9,7 +9,7 @@ SKIP_STYLE = ("chapter", "head", "toc", "title", "verso", "copyright", "caption"
 SKIP_CONTENT = re.compile(
     r"^(chapter|cap[íi]tulo|parte|part|libro|book|act[oe]?|canto|secci[oó]n|"
     r"section|appendix|ap[eé]ndice|preface|prefacio|introduction|introducci[oó]n|"
-    r"note|nota)\b", re.I)
+    r"index|[íi]ndice|note|nota)\b", re.I)
 SKIP_FOOTNOTE = re.compile(r"^(\[\s*(\d{1,3}|[a-zA-Z])\s*\]|\{\s*nota|\[\s*nota|\[\s*note)", re.I)
 CAPTION = re.compile(r"^(fig(ure|ura|s)?\.?\s|plate|table|tabla|cuadro|l[áa]m(ina)?|il?ustraci[oó]n|image|imagen)\b", re.I)
 

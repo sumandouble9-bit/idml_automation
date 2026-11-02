@@ -596,8 +596,7 @@ def _center_narrow_tables(app):
                 }
 
                 try { tpara.firstLineIndent = 0; } catch (eF) {}
-                var isNarrow = (leftover >= MIN_SPACE) || (tb.columns.length <= 2 && leftover > 4);
-                if (isNarrow && leftover > 0) {
+                if (leftover > 4) {
                     try { tpara.leftIndent = leftover / 2; centered++; } catch (eI) {}
                 } else {
                     try { tpara.leftIndent = 0; } catch (eI0) {}

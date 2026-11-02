@@ -254,8 +254,7 @@ def should_pair_headings(
 
     # Check 5: Multiple consecutive headings introducing the chapter without intervening text
     if not is_frontmatter_or_backmatter(curr_text) and not is_frontmatter_or_backmatter(prev_text):
-        if is_chapter_heading(curr_text) and is_part_or_book_heading(prev_text):
-            return True
+        return True
 
     return False
 

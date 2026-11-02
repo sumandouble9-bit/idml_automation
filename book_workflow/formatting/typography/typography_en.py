@@ -380,20 +380,21 @@ def _normalize_table_content(table_elem, epub_fmt=None):
                             c_txt = "".join(c.text or "" for c in c_csr.iter() if lname(c.tag) == "Content").strip()
                             clean_c = re.sub(r"\s+", " ", c_txt).strip().lower()
 
-                            is_epub_it = bool(clean_c and clean_c in lower_italics)
-                            is_epub_bd = bool(clean_c and clean_c in lower_bolds)
+                            curr_cs = c_csr.attrib.get("AppliedCharacterStyle", "")
+                            font_st = c_csr.attrib.get("FontStyle", "")
+                            is_cell_it = "italic" in curr_cs.lower() or font_st == "Italic"
+                            is_cell_bd = "bold" in curr_cs.lower() or font_st == "Bold"
 
-                            if is_epub_it:
+                            if is_cell_it:
                                 c_csr.set("AppliedCharacterStyle", "CharacterStyle/italic")
                                 c_csr.set("FontStyle", "Italic")
-                            elif is_epub_bd:
+                            elif is_cell_bd:
                                 c_csr.set("AppliedCharacterStyle", "CharacterStyle/boldtext")
                                 c_csr.set("FontStyle", "Bold")
                             else:
-                                curr_cs = c_csr.attrib.get("AppliedCharacterStyle", "")
-                                if curr_cs in ("CharacterStyle/italicalign", "CharacterStyle/italic"):
+                                if curr_cs in ("CharacterStyle/italicalign", "CharacterStyle/italic", "CharacterStyle/boldtext"):
                                     c_csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
-                                if c_csr.attrib.get("FontStyle") in ("Italic", "Bold"):
+                                if font_st in ("Italic", "Bold"):
                                     c_csr.set("FontStyle", "Regular")
 
 
@@ -1448,10 +1449,18 @@ def process_stories(target_dir, book_name=None):
                         psr.set("FirstLineIndent", "18")
                     psr.set("SpaceBefore", "1.5")
                     psr.set("SpaceAfter", "3")
-                    psr.set("KeepLinesTogether", "true")
-                    psr.set("KeepFirstAndLastLines", "true")
-                    psr.set("MinLinesAtStart", "2")
-                    psr.set("MinLinesAtEnd", "2")
+                    has_tbl = any(lname(c.tag) == "Table" for c in psr.iter())
+                    if not has_tbl:
+                        psr.set("KeepLinesTogether", "true")
+                        psr.set("KeepFirstAndLastLines", "true")
+                        psr.set("MinLinesAtStart", "2")
+                        psr.set("MinLinesAtEnd", "2")
+                    else:
+                        if "KeepLinesTogether" in psr.attrib:
+                            del psr.attrib["KeepLinesTogether"]
+                        if "KeepFirstAndLastLines" in psr.attrib:
+                            del psr.attrib["KeepFirstAndLastLines"]
+                        psr.set("FirstLineIndent", "0")
                     for csr in psr.iter():
                         if lname(csr.tag) == "CharacterStyleRange":
                             _ensure_font_prop(csr, "Palatino Linotype", point_size=9.65, leading=12)
@@ -1668,7 +1677,17 @@ def process_stories(target_dir, book_name=None):
                 is_u_style = any(k in cstyle.lower() for k in ["underlin", "/u"])
                 has_u_attr = csr.attrib.get("Underline") == "true"
 
-                if is_u_style or has_u_attr:
+                pos_curr = csr.attrib.get("Position", "")
+                is_note_marker = bool(re.match(r"^\[?\d{1,5}[a-z]?\]?$", ctxt.strip())) or pos_curr in ("Superscript", "Subscript")
+                if is_note_marker:
+                    is_legit_u = False
+                    is_u_style = False
+                    if "Underline" in csr.attrib:
+                        del csr.attrib["Underline"]
+                    if "FillColor" in csr.attrib:
+                        del csr.attrib["FillColor"]
+                    changed = True
+                elif is_u_style or has_u_attr:
                     c_clean = ctxt.replace("\xa0", " ").strip().lower()
                     if c_clean:
                         if epub_underlines:
@@ -1683,7 +1702,7 @@ def process_stories(target_dir, book_name=None):
                             and not re.search(r"[.?!]\s+[a-z]", c_clean)
                         ):
                             if re.match(
-                                r"^(?:footnote(?:\s*\d+)?|\d{1,4}|chapter(?:\s+[ivxlcdm0-9]+)?|chapters(?:\s+[ivxlcdm0-9]+)?|[ivxlcdm]{2,}|[-–—]\d+|p\.\s*\d+)$",
+                                r"^(?:chapter(?:\s+[ivxlcdm0-9]+)?|chapters(?:\s+[ivxlcdm0-9]+)?|[ivxlcdm]{2,})$",
                                 c_clean,
                                 re.I,
                             ):

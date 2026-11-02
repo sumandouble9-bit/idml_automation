@@ -77,8 +77,7 @@ for (var s = 0; s < doc.stories.length; s++){
             var tw = tblWidth(tb);
             var colW = usableWidthFor(tb);
             var leftover = colW - tw;
-            var isNarrow = (leftover >= 6) || (tb.columns.length <= 2 && leftover > 4);
-            if (isNarrow && leftover > 0) {
+            if (leftover > 4) {
                 try { tpara.leftIndent = leftover / 2; centered++; } catch (eC) {}
             } else {
                 try { tpara.leftIndent = 0; } catch (eZ) {}

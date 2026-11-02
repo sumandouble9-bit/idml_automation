@@ -97,7 +97,22 @@ def apply_captions(app, caption_map):
                     }
                 }
             } catch(e0){}
-            if (alreadyBelow){ applied++; continue; }
+            if (alreadyBelow){
+                // If a duplicate caption exists directly above the image, remove it
+                try {
+                    var _first0 = imgPara.characters[0].index;
+                    if (_first0 >= 1){
+                        var _aboveP = host.characters[_first0 - 1].paragraphs[0];
+                        var _hasImgA = false;
+                        try { _hasImgA = (_aboveP.allPageItems.length > 0); } catch(e0b){}
+                        if (!_hasImgA && capMatch(_aboveP.contents)){
+                            _aboveP.remove();
+                        }
+                    }
+                } catch(e0c){}
+                applied++;
+                continue;
+            }
 
             // 1) Remove EVERY matching caption paragraph immediately above/below the
             //    image (split figures repeat the same caption, so there can be several).
@@ -198,6 +213,21 @@ def cleanup_caption_artifacts(app, caption_map):
             var anchorChar = g.parent.parent;
             var imgPara = anchorChar.paragraphs[0];
             var host = imgPara.parentStory;
+
+            // If a duplicate caption exists directly above the image, remove it
+            try {
+                var firstIdx = imgPara.characters[0].index;
+                if (firstIdx >= 1){
+                    var aboveP = host.characters[firstIdx - 1].paragraphs[0];
+                    var hasImgAb = false;
+                    try { hasImgAb = (aboveP.allPageItems.length > 0); } catch(eIA){}
+                    if (!hasImgAb && norm(aboveP.contents) === capN){
+                        aboveP.remove();
+                        fixed++;
+                    }
+                }
+            } catch(eAb){}
+
             var ci = imgPara.characters[-1].index + 1;
             var capSeen = 0;
 
