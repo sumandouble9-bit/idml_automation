@@ -57,6 +57,10 @@ class BookFormatter:
             unzip(target, work_dir)
             unzip(reference, ref_dir)
 
+            # Flatten footnote-reference hyperlinks before any typography pass so the
+            # superscript markers survive paragraph rebuilds (see epub_style_enricher).
+            epub_style_enricher.unwrap_hyperlinks_in_extracted(work_dir)
+
             print("  [0/6] Dynamically resolving, downloading, and bundling all document font families...")
             report["stages"]["font_manager"] = font_manager.resolve_idml_fonts_and_fallbacks(
                 work_dir, output.parent

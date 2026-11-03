@@ -228,6 +228,48 @@ def extract_epub_formatting(epub_path: Path):
     return out
 
 
+def _unwrap_hyperlinks(root):
+    """Removes hyperlink wrappers while keeping the text they wrap (the footnote-reference
+    markers), so the link goes but the superscript [NN] stays. HyperlinkTextSource elements
+    are replaced by their inner CharacterStyleRanges, and the Hyperlink character style is
+    dropped to [No character style] (the Superscript position is preserved)."""
+    changed = False
+    parent_map = {c: p for p in root.iter() for c in p}
+    for hts in list(root.iter()):
+        if lname(hts.tag) != "HyperlinkTextSource":
+            continue
+        parent = parent_map.get(hts)
+        if parent is None:
+            continue
+        # Keep every child the wrapper held: footnote markers appear either as
+        # inner CharacterStyleRanges (HTS is a sibling of CSRs, under a
+        # ParagraphStyleRange) or as a bare <Content> (HTS nested inside a CSR).
+        children = list(hts)
+        for c in children:
+            if lname(c.tag) != "CharacterStyleRange":
+                continue
+            cs = c.attrib.get("AppliedCharacterStyle", "")
+            if "hyperlink" in cs.lower():
+                c.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
+            # footnote marker shows as plain black text, never a coloured/underlined link
+            c.set("FillColor", "Color/Black")
+            c.set("Underline", "false")
+        idx = list(parent).index(hts)
+        parent.remove(hts)
+        for off, c in enumerate(children):
+            parent.insert(idx + off, c)
+        # When the HTS sat inside a CSR (its <Content> is now a direct child of
+        # that CSR), strip the hyperlink styling from the wrapping CSR too.
+        if lname(parent.tag) == "CharacterStyleRange":
+            cs = parent.attrib.get("AppliedCharacterStyle", "")
+            if "hyperlink" in cs.lower():
+                parent.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
+            parent.set("FillColor", "Color/Black")
+            parent.set("Underline", "false")
+        changed = True
+    return changed
+
+
 def _reconstruct_psr_with_epub_spans(psr, para_map, lower_italics=None, lower_bolds=None):
     """
     Reconstructs the CharacterStyleRanges of a ParagraphStyleRange by splitting at <Br />
@@ -280,7 +322,27 @@ def _reconstruct_psr_with_epub_spans(psr, para_map, lower_italics=None, lower_bo
             epub_info = para_map[nk][0]
             spans = epub_info["spans"]
 
-            if spans:
+            has_pos = any(
+                it[0] == "content" and it[2].attrib.get("Position") in ("Superscript", "Subscript")
+                for it in para_items
+            )
+            if has_pos:
+                for it in para_items:
+                    if it[0] == "content":
+                        attrib = dict(it[2].attrib)
+                        if "hyperlink" in attrib.get("AppliedCharacterStyle", "").lower():
+                            attrib["AppliedCharacterStyle"] = r"CharacterStyle/$ID/[No character style]"
+                        c_new = ET.Element("CharacterStyleRange", attrib)
+                        if sample_props is not None:
+                            c_new.append(copy.deepcopy(sample_props))
+                        cnt = ET.SubElement(c_new, "Content")
+                        cnt.text = it[1]
+                        new_csrs.append(c_new)
+                    elif it[0] == "other":
+                        c_new = ET.Element("CharacterStyleRange", dict(it[2].attrib))
+                        c_new.append(copy.deepcopy(it[1]))
+                        new_csrs.append(c_new)
+            elif spans:
                 # Find matching offsets in p_text for each span
                 intervals = []
                 last_idx = 0
@@ -406,6 +468,7 @@ def enrich_story_character_formatting(story_root, formatting_dict, lang="en"):
     lower_italics = {re.sub(r"\s+", " ", s).strip().lower() for s in formatting_dict.get("italic", set()) if s}
     lower_bolds = {re.sub(r"\s+", " ", s).strip().lower() for s in formatting_dict.get("bold", set()) if s}
 
+    _unwrap_hyperlinks(story_root)
     enriched_count = 0
     story_changed = False
 
@@ -553,6 +616,29 @@ def find_matching_epub(book_path_or_name) -> Path:
                 if stem and (stem in ep.stem or ep.stem in stem):
                     return ep
     return None
+
+
+def unwrap_hyperlinks_in_extracted(extracted_dir):
+    """Unwraps every HyperlinkTextSource in an unpacked IDML's stories BEFORE the
+    typography pass runs. Footnote-reference markers wrapped as a direct child of a
+    ParagraphStyleRange would otherwise be discarded when the paragraph is rebuilt;
+    flattening them to plain superscript CharacterStyleRanges here keeps the marker
+    text (as black, unlinked superscript) all the way through to the PDF."""
+    extracted_dir = Path(extracted_dir)
+    stories_dir = extracted_dir / "Stories"
+    if not stories_dir.exists():
+        return 0
+    changed_count = 0
+    for story_f in stories_dir.glob("Story_*.xml"):
+        try:
+            tree = ET.parse(story_f)
+            root = tree.getroot()
+            if _unwrap_hyperlinks(root):
+                tree.write(story_f, encoding="utf-8", xml_declaration=True)
+                changed_count += 1
+        except Exception as e:
+            print(f"Note: Error unwrapping hyperlinks in {story_f.name}: {e}")
+    return changed_count
 
 
 def enrich_extracted_idml(extracted_dir: Path, book_name: str = None, epub_path: Path = None, lang="en"):
