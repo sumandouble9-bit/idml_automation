@@ -11,208 +11,13 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import epub_tools
 
-EPUB_INPUT_DIR = os.environ.get("EPUB_DIR", "").strip() or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "epub_input_files")
+try:
+    from audit_text import *
+    from audit_indesign import *
+except ImportError:
+    from .audit_text import *
+    from .audit_indesign import *
 
-NORMALIZED_DIR = os.environ.get("AUDIT_SRC", "").strip() or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "page_resize_output")
-RAW_INPUT_DIR  = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "input_files")
-
-_IMG_TOKEN = re.compile(r"^(image|img|fig|figs|figure|plate|illustration)\d+$")
-_EXT_TOKEN = {"jpg", "jpeg", "png", "gif", "tif", "tiff", "bmp", "webp"}
-_PH_TOKEN  = {"insert", "here", "image", "img", "fig", "figs", "figure", "figures",
-              "plate", "plates", "illustration", "illustrations"}
-_WORD_RE   = re.compile(r"[A-Za-z][A-Za-z0-9']*")
-MISSING_RUN_LEN = 12
-MISSING_OCC_THRESHOLD = 40
-
-
-def _source_idml(book):
-    """Locate the un-injected source IDML for a book (normalized first, then raw)."""
-    for d in (NORMALIZED_DIR, RAW_INPUT_DIR):
-        p = os.path.join(d, book + ".idml")
-        if os.path.exists(p):
-            return p
-    return None
-
-
-def _idml_story_token_lists(idml_path):
-    """Per-story ordered lists of lowercase word tokens from an IDML's <Content> runs.
-
-    An IDML is a zip; the visible text lives in Stories/Story_*.xml inside <Content>
-    elements. Keeping tokens grouped by story preserves reading order within a story
-    so a *consecutive* run of dropped words can be spotted.
-    """
-    stories = []
-    try:
-        with zipfile.ZipFile(idml_path) as z:
-            for n in sorted(z.namelist()):
-                if not (n.startswith("Stories/") and n.endswith(".xml")):
-                    continue
-                try:
-                    xml = z.read(n).decode("utf-8", "replace")
-                except Exception:
-                    continue
-                toks = []
-                for seg in re.split(r"<Br\s*/>", xml):
-                    runs = re.findall(r"<Content>(.*?)</Content>", seg, re.S)
-                    txt = "".join(runs)
-                    txt = re.sub(r"&#x?[0-9A-Fa-f]+;", " ", txt)
-                    txt = txt.replace("&amp;", " ").replace("&lt;", " ").replace("&gt;", " ")
-                    for w in _WORD_RE.findall(txt):
-                        toks.append(w.lower().strip("'"))
-                if toks:
-                    stories.append(toks)
-    except Exception:
-        pass
-    return stories
-
-
-def missing_text_reason(source_idml, injected_idml, caption_map=None):
-    """Return a MISSING_TEXT reason string if the injection dropped body text.
-
-    Compares the source IDML's words with the injected IDML's words. Words that
-    legitimately disappear are ignored: the placeholder tokens (Insert / here /
-    imageNNN / file extensions) and every word used in an EPUB caption (the
-    original caption is removed and replaced by the EPUB caption). A hit is
-    reported when EITHER a large number of distinctive word-occurrences (length
-    >= 5) are missing from the output (>= MISSING_OCC_THRESHOLD) — catches a
-    dropped paragraph/heading even when its words recur elsewhere — OR a
-    *consecutive run* of >= MISSING_RUN_LEN source words is entirely absent from
-    the output — catches a localised unique passage. Returns None when nothing
-    meaningful is lost.
-    """
-    if not (source_idml and os.path.exists(source_idml) and os.path.exists(injected_idml)):
-        return None
-    src_stories = _idml_story_token_lists(source_idml)
-    out_stories = _idml_story_token_lists(injected_idml)
-    if not src_stories or not out_stories:
-        return None
-    out_tokens, out_all = set(), []
-    for toks in out_stories:
-        out_tokens.update(toks)
-        out_all.extend(toks)
-
-    ignore = set(_PH_TOKEN) | set(_EXT_TOKEN)
-    if caption_map:
-        for v in caption_map.values():
-            for w in _WORD_RE.findall(v):
-                ignore.add(w.lower().strip("'-"))
-
-    def keep(w):
-        # Keep only meaningful words (>=5 chars, not ignored, not an image token).
-        return len(w) >= 5 and w not in ignore and not _IMG_TOKEN.match(w)
-
-    from collections import Counter
-    cs = Counter(w for s in src_stories for w in s if keep(w))
-    co = Counter(w for w in out_all if keep(w))
-    lost_occ, lost_words = 0, []
-    for w, c in cs.items():
-        d = c - co.get(w, 0)
-        if d > 0:
-            lost_occ += d
-            lost_words.append((d, w))
-
-    def is_missing(w):
-        # A source word counts as missing when it is absent from the output tokens.
-        return len(w) >= 2 and w not in ignore and not _IMG_TOKEN.match(w) and w not in out_tokens
-    spans = []
-    for toks in src_stories:
-        i, n = 0, len(toks)
-        while i < n:
-            if is_missing(toks[i]):
-                j = i
-                while j < n and is_missing(toks[j]):
-                    j += 1
-                anchor, k = [], i - 1
-                while k >= 0 and len(anchor) < 3:
-                    if not is_missing(toks[k]):
-                        anchor.insert(0, toks[k])
-                    k -= 1
-                spans.append((j - i, anchor, toks[i:j]))
-                i = j
-            else:
-                i += 1
-    best_run = max((L for L, _, _ in spans), default=0)
-
-    if lost_occ >= MISSING_OCC_THRESHOLD or best_run >= MISSING_RUN_LEN:
-        lost_words.sort(reverse=True)
-        sample = " ".join(w for _, w in lost_words[:15]) or ""
-        msg = "MISSING_TEXT=lost_occ=%d,run=%d:[%s]" % (lost_occ, best_run, sample)
-        spans.sort(key=lambda x: x[0], reverse=True)
-        return (msg, spans, lost_words)
-    return None
-
-
-def _find_page(app, anchor):
-    """Return the page name where `anchor` (the present words just before a gap)
-    appears in the open document, or "" if not found."""
-    gwords = [re.sub(r"[^a-z0-9]", "", w) for w in anchor]
-    gwords = [w for w in gwords if w]
-    if len(gwords) < 2:
-        return ""
-    grep = "(?i)" + r"\s+".join(gwords)
-    grep_js = grep.replace("\\", "\\\\").replace('"', '\\"')
-    js = ('app.findGrepPreferences = NothingEnum.nothing;'
-          'app.findGrepPreferences.findWhat = "%s";'
-          'var f = app.activeDocument.findGrep();'
-          'app.findGrepPreferences = NothingEnum.nothing;'
-          'var pg = "";'
-          'for (var i=0;i<f.length;i++){ try { var tf=f[i].parentTextFrames;'
-          ' if (tf.length && tf[0].parentPage){ pg=tf[0].parentPage.name; break; } } catch(e){} }'
-          'pg;') % grep_js
-    try:
-        return app.DoScript(js, JS) or ""
-    except Exception:
-        return ""
-
-
-def find_missing_pages(app, spans, max_pages=8):
-    """Aggregate list of page names for the biggest missing passages (for the
-    one-line audit reason). `spans` is a list of (length, anchor, words)."""
-    pages, seen = [], set()
-    for _, anc, _ in spans or []:
-        pg = _find_page(app, anc)
-        if pg and pg not in seen:
-            seen.add(pg)
-            pages.append(pg)
-        if len(pages) >= max_pages:
-            break
-
-    def _k(x):
-        # Sort key: numeric when the value is an integer, else fall back to string order.
-        try:
-            return (0, int(x))
-        except Exception:
-            return (1, x)
-    return sorted(pages, key=_k)
-
-
-def write_missing_words_report(report_path, app, name, spans, all_words):
-    """Write a per-book report of the EXACT missing words with their page numbers:
-    each dropped passage (page + the missing words), then the full distinctive
-    missing-word list with how many times each is missing."""
-    lines = ["Missing-text report for %s" % name,
-             "Generated: %s" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-             "=" * 60,
-             "Each dropped passage below is the run of consecutive words that are in",
-             "the source but not in the output, with the page they belong on.",
-             "-" * 60, ""]
-    shown = 0
-    for length, anchor, words in spans:
-        pg = _find_page(app, anchor)
-        lines.append("p.%s : %s" % (pg or "?", " ".join(words)))
-        shown += 1
-        if shown >= 300:
-            break
-    if shown == 0:
-        lines.append("(nothing to locate; see the word list below)")
-    lines.append("")
-    lines.append("-" * 60)
-    lines.append("All distinctive missing words (word  x<times missing>):")
-    lines.append("-" * 60)
-    for c, w in all_words:
-        lines.append("  %s  x%d" % (w, c))
-    with open(report_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
 
 _HERE             = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR        = os.environ.get("AUDIT_OUTBASE", "").strip() or os.path.join(_HERE, "output_files")
@@ -226,47 +31,6 @@ REJECTED_PDF_DIR  = os.path.join(REJECTED_DIR, "pdf_files")
 LOG_PATH          = os.path.join(OUTPUT_DIR, "audit_log.txt")
 SUMMARY_PATH      = os.path.join(OUTPUT_DIR, "books_summary_report.txt")
 
-JS = 1246973031
-
-
-def _is_rpc_error(exc: Exception) -> bool:
-    """Detect InDesign COM hang / crash / stuck-modal conditions worth restarting for."""
-    s = str(exc).lower()
-    return (
-        "remote procedure call" in s
-        or "rpc server" in s
-        or "-2147023170" in s
-        or "-2147023174" in s
-        or "call was rejected" in s
-        or "modal dialog or alert is active" in s
-        or "30486" in s
-    )
-
-
-def restart_indesign(wait_seconds: int = 6):
-    """Force-kill InDesign, wait, then relaunch and return a fresh COM Application object."""
-    print("  [restart] Killing InDesign.exe ...", flush=True)
-    for proc in ("InDesign.exe", "Adobe Crash Processor.exe"):
-        try:
-            subprocess.run(["taskkill", "/F", "/IM", proc], capture_output=True)
-        except Exception:
-            pass
-    time.sleep(wait_seconds)
-    for _ in range(6):
-        try:
-            new_app = win32com.client.Dispatch("InDesign.Application")
-            try:
-                new_app.DoScript(
-                    "app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;",
-                    JS,
-                )
-            except Exception:
-                pass
-            print("  [restart] InDesign is back.", flush=True)
-            return new_app
-        except Exception:
-            time.sleep(5)
-    raise RuntimeError("Could not restart InDesign after multiple attempts")
 
 def audit_one(app, idml_path, caption_map=None):
     """Return (passed: bool, reasons: list[str])."""
@@ -693,20 +457,6 @@ def audit_one(app, idml_path, caption_map=None):
     passed = len(reasons) == 0
     return passed, reasons, metrics
 
-def export_pdf(app, pdf_path):
-    # Export the active InDesign document to PDF using the High Quality Print preset.
-    js = f"""
-    try {{ app.pdfExportPreferences.pageRange = PageRange.ALL_PAGES; }} catch(e) {{}}
-    var pdfPreset = app.pdfExportPresets.itemByName("[High Quality Print]");
-    if (!pdfPreset.isValid) pdfPreset = app.pdfExportPresets[0];
-    app.activeDocument.exportFile(ExportFormat.PDF_TYPE, new File("{pdf_path.replace(chr(92), '/')}"), false, pdfPreset);
-    """
-    app.DoScript(js, JS)
-
-def close_doc(app):
-    # Close the active document without saving.
-    app.DoScript("app.activeDocument.close(SaveOptions.NO);", JS)
-
 
 def _pages_from(detail):
     """Extract unique page numbers (p.NN) from a detail string, in order."""
@@ -900,6 +650,10 @@ def main():
 
     print(f"\nDone. {passed_count} passed, {failed_count} rejected.")
     print(f"Log: {LOG_PATH}")
+
+if __name__ == "__main__":
+    main()
+
 
 if __name__ == "__main__":
     main()
