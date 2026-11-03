@@ -495,7 +495,14 @@ def restore_footer_page_number(stories_dir):
         m = re.search(r"(<Content>)([^<]*\|[^<]*)(</Content>)", txt)
         if not m:
             continue
-        new = m.group(1) + "<?ACE 18?>" + m.group(2) + m.group(3)
+        # On a recto foot the running-header title sits BEFORE the folio content,
+        # so the page number must follow the separator ("Title | 37"); on a verso
+        # the title follows, so the number leads ("38 | Title").
+        title_pos = txt.find("TextVariableInstance")
+        if 0 <= title_pos < m.start():
+            new = m.group(1) + m.group(2) + "<?ACE 18?>" + m.group(3)
+        else:
+            new = m.group(1) + "<?ACE 18?>" + m.group(2) + m.group(3)
         txt = txt[:m.start()] + new + txt[m.end():]
         io.open(fp, "w", encoding="utf-8").write(txt)
         changed = True
