@@ -18,7 +18,7 @@ class DocumentFormattingStage(PipelineStage):
 
     def process_book(self, book) -> bool:
         self.paths.format_dir.mkdir(parents=True, exist_ok=True)
-        valigned = self.paths.valign_dir / book.path.name
+        valigned = self.paths.valign_dir / f"{book.stem}_valign.idml"
         aligned = self.paths.align_dir / book.path.name
         if valigned.exists():
             book.path = valigned   # consume the step-0 vertical_bottom_align copy

@@ -19,8 +19,12 @@ class Book:
 
     @property
     def stem(self) -> str:
-        """Base name of the input IDML without extension."""
-        return self.path.stem
+        """Base name of the input IDML without extension (pipeline suffixes like _valign stripped)."""
+        name = self.path.stem
+        for suffix in ("_valign", "_injected"):
+            if name.endswith(suffix):
+                name = name[: -len(suffix)]
+        return name
 
     @property
     def isbn(self) -> str:
