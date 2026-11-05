@@ -18,6 +18,12 @@ class DocumentFormattingStage(PipelineStage):
 
     def process_book(self, book) -> bool:
         self.paths.format_dir.mkdir(parents=True, exist_ok=True)
+        valigned = self.paths.valign_dir / book.path.name
+        aligned = self.paths.align_dir / book.path.name
+        if valigned.exists():
+            book.path = valigned   # consume the step-0 vertical_bottom_align copy
+        elif aligned.exists():
+            book.path = aligned   # legacy aligned copy (same name keeps stem)
         out_file = self.paths.format_dir / f"{book.stem}_formatted.idml"
         print(f"Formatting {book.display_language}: {book.path.name} -> {out_file.name}")
 

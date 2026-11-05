@@ -9,6 +9,7 @@ from .stages.export_stage import QualityAuditAndExportStage
 from .stages.formatting_stage import DocumentFormattingStage
 from .stages.injection_stage import AssetInjectionStage
 from .stages.normalization_stage import DocumentNormalizationStage
+from .stages.vertical_align_stage import VerticalAlignStage
 
 
 class BookWorkflow:
@@ -19,6 +20,7 @@ class BookWorkflow:
         self.discovery = BookDiscovery(self.paths)
         self.formatting = DocumentFormattingStage(self.paths)
         self.normalization = DocumentNormalizationStage(self.paths)
+        self.vertical_align = VerticalAlignStage(self.paths)
         self.injection = AssetInjectionStage(self.paths)
         self.export = QualityAuditAndExportStage(self.paths)
 
@@ -50,6 +52,10 @@ class BookWorkflow:
             print("No matching books found to process.")
             return
 
+        # Vertical bottom-align is now a SEPARATE command (vertical_bottom_align.py). It is still
+        # reachable here via --step va, but it is NOT part of "all" so run_book_pipeline starts at formatting.
+        if step == "va":
+            self.vertical_align.run(books)
         if step in ("all", "1"):
             self.formatting.run(books)
         if step in ("all", "2"):
@@ -59,8 +65,10 @@ class BookWorkflow:
             self.injection.fix_chapter_double_breaks(books)
         if step == "3d":
             self.injection.fix_chapter_double_breaks(books)
-        if step in ("all", "3b"):
-            self.injection.fill_bottom_gaps(books)
+        # Post-injection bottom-gap fill (3b) disabled: vertical-justify runs BEFORE injection now
+        # (see vertical_bottom_align.py). Re-enable by uncommenting the block below.
+        # if step in ("all", "3b"):
+        #     self.injection.fill_bottom_gaps(books)
         if step in ("all", "4"):
             self.export.run(books, force=force_run)
 
@@ -72,9 +80,9 @@ def build_arg_parser():
     parser.add_argument("--lang", choices=["all", "es", "en"], default="all", help="Filter by language")
     parser.add_argument(
         "--step",
-        choices=["all", "1", "2", "3", "3d", "3b", "3c", "4"],
+        choices=["all", "va", "1", "2", "3", "3d", "3b", "3c", "4"],
         default="all",
-        help="Workflow step to run (1=Format, 2=Normalize, 3=Inject, 3b=GapFill, 4=Export PDF)",
+        help="Workflow step to run (va=VerticalAlign-first, 1=Format, 2=Normalize, 3=Inject, 3b=GapFill, 4=Export PDF)",
     )
     parser.add_argument("--limit", type=int, default=None, help="Limit number of books to process")
     parser.add_argument("--force", action="store_true", help="Force processing even if already completed")

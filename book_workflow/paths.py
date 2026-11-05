@@ -34,6 +34,8 @@ class WorkflowPaths:
         # Intermediate output directories
         self.format_dir = self.workflow_dir / "Output" / "Formatted"
         self.norm_dir = self.workflow_dir / "Output" / "page_resize_output"
+        self.align_dir = self.workflow_dir / "Output" / "aligned"
+        self.valign_dir = self.workflow_dir / "Output" / "vertical_bottom_align"
 
         # Final deliverable directories
         self.final_output_root = self.workflow_dir / "final_output_files"

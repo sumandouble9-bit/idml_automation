@@ -80,7 +80,9 @@ class AssetInjectionStage(WorkflowStage):
         code = self.inject(books, force=force)
         result.record(code == 0)
         self.fix_chapter_double_breaks(books)
-        self.fill_bottom_gaps(books)
+        # Post-injection bottom-gap fill disabled: vertical-justify now runs BEFORE injection
+        # (see vertical_bottom_align.py). Re-enable by uncommenting the line below.
+        # self.fill_bottom_gaps(books)
         return result
 
 
