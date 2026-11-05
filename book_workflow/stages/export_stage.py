@@ -136,8 +136,10 @@ class QualityAuditAndExportStage(WorkflowStage):
         target_idmls = kept
 
         if target_idmls:
-            print(f"Exporting {len(target_idmls)} IDML document(s) to PDF...")
-            for doc in target_idmls:
+            total = len(target_idmls)
+            print(f"Exporting {total} IDML document(s) to PDF...")
+            for i, doc in enumerate(target_idmls, 1):
+                print(f"\n[{i}/{total}] Exporting PDF: {doc.stem}")
                 convert_to_pdf.convert_batch(target_path=str(doc), output_dir=str(self.paths.final_pdf_dir), force=force)
                 result.record(True)
         else:

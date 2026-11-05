@@ -201,6 +201,22 @@ flowchart TD
 
 ## Deep-Dive: Workflow Stages
 
+### Stage 0: Vertical Bottom Align (separate command)
+**Module:** `bottom_align_text/vertical_bottom_align.py`  |  **Stage class:** `VerticalAlignStage` (`--step va`)
+
+Run first, as its own command, on the raw `idml_input_files` manuscripts. It composes each book to its
+full page count, then:
+- **Full body pages** -> `VerticalJustification = JustifyAlign` with a **1 mm bottom inset**, so the last
+  line meets the bottom-margin glue line.
+- **Short chapter/section-end pages** -> `TopAlign`, so chapter-end text is never stretched (no extra
+  vertical space between lines). Page "fullness" is derived from each frame's own measured line height;
+  the single policy knob is the named `MIN_FULL_RATIO`.
+- Output: `Output/vertical_bottom_align/<book>_valign.idml` (plus a `_valign_log.txt`). This is the input
+  consumed by the rest of the pipeline; the `_valign` suffix is stripped internally so downstream
+  formatted/exported names stay clean.
+
+---
+
 ### Stage 1: Dual-Language Typography & Formatting
 **Class:** `DocumentFormattingStage` (`book_workflow/stages/formatting_stage.py`)
 
@@ -239,8 +255,12 @@ Extracts high-resolution raster and vector graphics from source `.epub` archives
 
 ---
 
-### Stage 3b: Text Bottom-Gap Filling
-**Module:** `fix_text_bottom_gap.py`
+### Stage 3b: Text Bottom-Gap Filling (DISABLED)
+**Module:** `text_bottom_gap_format.py`
+
+> **Disabled:** vertical-justify now runs before injection (Stage 0), so the post-injection gap-fill is
+> commented out in `injection_stage.py` and `workflow.py`. It is kept for reference and can be re-enabled
+> by uncommenting `self.fill_bottom_gaps(books)`.
 
 Analyzes page balance across all body pages:
 - Identifies pages with premature paragraph breaks that leave awkward vertical white-space gaps before the bottom margin.
@@ -323,7 +343,10 @@ Analyzes page balance across all body pages:
 idml_automation/
 ├── README.md                                # Master documentation
 ├── requirements.txt                         # Python dependencies
-├── run_book_pipeline.py                     # Single Primary CLI runner (Book Production Workflow)
+├── run_book_pipeline.py                     # Primary CLI runner (reads Output/vertical_bottom_align)
+├── bottom_align_text/                       # Step 0: vertical bottom-align (separate command)
+│   ├── __init__.py
+│   └── vertical_bottom_align.py             # Bottom-align body -> Output/vertical_bottom_align/<book>_valign.idml
 ├── run_chapter_top_spacing.py               # Chapter top spacing runner
 ├── text_bottom_gap_format.py                # Stage 3b: Bottom gap reflow engine
 ├── measure_page_gaps.py                     # Quality audit tool: measures page gaps
@@ -347,7 +370,8 @@ idml_automation/
 │   │
 │   ├── stages/                              # OOP Stage implementations
 │   │   ├── __init__.py
-│   │   ├── base_stage.py                    # Abstract WorkflowStage base class
+│   │   ├── base_stage.py                    # Abstract WorkflowStage base class (prints i/N progress)
+│   │   ├── vertical_align_stage.py          # Step va: VerticalAlignStage (--step va)
 │   │   ├── formatting_stage.py              # Stage 1: DocumentFormattingStage
 │   │   ├── normalization_stage.py           # Stage 2: DocumentNormalizationStage
 │   │   ├── injection_stage.py               # Stage 3: AssetInjectionStage
@@ -397,6 +421,7 @@ idml_automation/
 │   └── paragraph_styles_format.py           # Alignment guard & justification fix
 │
 ├── Output/                                  # Intermediate pipeline artifacts
+│   ├── vertical_bottom_align/               # Step 0 output: <book>_valign.idml (pipeline input)
 │   ├── Formatted/
 │   ├── page_resize_output/
 │   ├── injected_idml_files/
@@ -432,9 +457,25 @@ idml_automation/
 
 ## Execution & CLI Guide
 
-The single, unified command to run the complete publishing pipeline is **`run_book_pipeline.py`**. You can run it directly from the workspace root.
+Production runs in **two commands**. First, vertical bottom-align the raw manuscripts; then run the main pipeline, which consumes the aligned output.
 
-### Running a Book (Recommended)
+### Step 0 - Vertical Bottom Align (separate command)
+
+```powershell
+# Bottom-align the body text of the raw input (idml_input_files) and write the aligned copy to
+# Output/vertical_bottom_align/<book>_valign.idml. Front matter is untouched; full body pages justify
+# to a 1mm bottom inset (text meets the glue line); short chapter/section-end pages are top-aligned so
+# their text is never stretched. Omit the id to align every book.
+python bottom_align_text/vertical_bottom_align.py 9789370421240
+python bottom_align_text/vertical_bottom_align.py
+```
+
+### Step 1-4 - Main Pipeline (Recommended)
+
+`run_book_pipeline.py` reads its input from **`Output/vertical_bottom_align/`** (the `<book>_valign.idml`
+files produced above; the `_valign` suffix is stripped internally so formatted/exported names stay clean)
+and runs formatting -> normalization -> image injection -> PDF export. Every step prints an `i/N`
+file-count so progress is visible in the terminal.
 
 ```powershell
 # Run a single book end-to-end by ISBN or filename:
@@ -445,14 +486,14 @@ python run_book_pipeline.py 9789370421240
 ### Batch & Stage Execution Options
 
 ```powershell
-# Process all books found in input_files/ end-to-end:
+# Process all aligned books end-to-end:
 python run_book_pipeline.py
 
 # Execute a specific stage only:
+python run_book_pipeline.py 9789370421240 --step va  # Vertical bottom-align (also the standalone command above)
 python run_book_pipeline.py 9789370421240 --step 1   # Stage 1: Formatting
 python run_book_pipeline.py 9789370421240 --step 2   # Stage 2: Normalization
 python run_book_pipeline.py 9789370421240 --step 3   # Stage 3: Asset Injection
-python run_book_pipeline.py 9789370421240 --step 3b  # Stage 3b: Gap Fill
 python run_book_pipeline.py 9789370421240 --step 4   # Stage 4: PDF Export & Audit
 
 # Filter by language:
@@ -462,6 +503,10 @@ python run_book_pipeline.py --lang en
 # Force reprocessing even if intermediate files already exist:
 python run_book_pipeline.py 9789370421240 --force
 ```
+
+> Note: vertical bottom-align is **not** part of `--step all`; it is a separate command (also reachable
+> via `--step va`). The post-injection gap-fill (Stage 3b) is **disabled**, because vertical-justify now
+> runs before injection.
 
 ---
 

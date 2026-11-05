@@ -55,10 +55,11 @@ class AssetInjectionStage(WorkflowStage):
         stems = {book.stem for book in books}
         targets = [f for f in self.paths.final_idml_dir.glob("*.idml")
                    if any(stem in f.name for stem in stems) and not f.name.endswith(".tmp")]
-        for idml in targets:
+        total = len(targets)
+        for i, idml in enumerate(targets, 1):
             try:
                 fixed = fix_chapter_breaks(idml)
-                print(f"  {idml.name}: chapter double-break fixed={fixed}")
+                print(f"  [{i}/{total}] {idml.name}: chapter double-break fixed={fixed}")
             except Exception as exc:
                 print(f"  {idml.name}: [!] chapter break fix failed: {exc}")
 

@@ -53,7 +53,9 @@ class PipelineStage(WorkflowStage):
     def run(self, books: list, force: bool = False) -> StageResult:
         self.print_header()
         result = StageResult(self.name)
-        for book in books:
+        total = len(books)
+        for i, book in enumerate(books, 1):
+            print(f"\n[{i}/{total}] {self.name}: {book.stem}")
             try:
                 ok = self.process_book(book)
                 result.record(ok)

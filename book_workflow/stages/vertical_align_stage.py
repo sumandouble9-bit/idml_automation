@@ -20,13 +20,14 @@ class VerticalAlignStage(WorkflowStage):
             result.record(False, "InDesign connection failed")
             return result
 
-        for book in books:
+        total = len(books)
+        for i, book in enumerate(books, 1):
             if not book.path.exists():
                 print(f"       [!] Missing input for {book.stem}; skipping.")
                 result.record(False, f"missing {book.path.name}")
                 continue
             out_file = self.paths.valign_dir / f"{book.stem}_valign.idml"
-            print(f"Aligning: {book.path.name} -> vertical_bottom_align/{out_file.name}")
+            print(f"\n[{i}/{total}] Aligning: {book.path.name} -> vertical_bottom_align/{out_file.name}")
             try:
                 vba.process_idml(app, str(book.path), str(out_file))
                 result.record(True)

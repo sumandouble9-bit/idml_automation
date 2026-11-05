@@ -512,7 +512,9 @@ class EpubInjector:
         print(f"Found {len(idml_files)} IDML file(s). Starting batch process...")
 
         retry_counts = {}
-        for filename in idml_files:
+        _total = len(idml_files)
+        for _i, filename in enumerate(idml_files, 1):
+            print(f"\n[{_i}/{_total}] Injecting: {filename}")
             retry_counts.setdefault(filename, 0)
             while True:
                 try:
