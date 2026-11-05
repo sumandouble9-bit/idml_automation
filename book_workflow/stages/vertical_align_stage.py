@@ -13,7 +13,7 @@ class VerticalAlignStage(WorkflowStage):
         result = StageResult(self.name)
         self.paths.valign_dir.mkdir(parents=True, exist_ok=True)
 
-        import vertical_bottom_align as vba
+        from bottom_align_text import vertical_bottom_align as vba
         app = vba._connect()
         if app is None:
             print("       [!] Could not connect to Adobe InDesign.")
@@ -25,7 +25,7 @@ class VerticalAlignStage(WorkflowStage):
                 print(f"       [!] Missing input for {book.stem}; skipping.")
                 result.record(False, f"missing {book.path.name}")
                 continue
-            out_file = self.paths.valign_dir / book.path.name
+            out_file = self.paths.valign_dir / f"{book.stem}_valign.idml"
             print(f"Aligning: {book.path.name} -> vertical_bottom_align/{out_file.name}")
             try:
                 vba.process_idml(app, str(book.path), str(out_file))
