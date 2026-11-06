@@ -10,7 +10,7 @@ _START_RE = re.compile(r"^\s*" + _PREFIX + r"\s+(?:[IVXLCDM0-9]+|[A-Z\u00c1\u00c
 _HEAD_STYLE_KEYS = ("chapter", "sub-heading", "master_chapter", "after_chapter")
 _ROMAN_ATTACHED = re.compile(
     r"^(M{0,4}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3}))"
-    r"([A-ZÁÉÍÓÚÑ].*\s.*)$")
+    r"\s*([A-ZÁÉÍÓÚÑ].*\s.*)$")
 _SKIP_STYLE_KEYS = ("toc", "content", "index")
 
 
