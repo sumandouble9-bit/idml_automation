@@ -19,9 +19,9 @@ def main(argv=None):
     language = None if args.lang == "all" else args.lang
 
     paths = WorkflowPaths()
-    paths.input_dir = paths.valign_dir          # this step reads Output/vertical_bottom_align
+    paths.input_dir = paths.workflow_dir / "idml_input_files"
     if not paths.input_dir.is_dir() or not any(paths.input_dir.glob("*.idml")):
-        print(f"No aligned IDML in {paths.input_dir}. Run `python vertical_bottom_align.py` first.")
+        print(f"No IDML files found in {paths.input_dir}.")
         return
 
     BookWorkflow(paths).run(
