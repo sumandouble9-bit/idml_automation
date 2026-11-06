@@ -25,21 +25,25 @@ for (var si = 0; si < doc.stories.length; si++){
     for (var pi = 0; pi < paras.length; pi++){
         try {
             var p = paras[pi];
-            var k = key(p.contents);
-            if (k.length < 4) continue;
-            var sn = ""; try { sn = p.appliedParagraphStyle.name.toLowerCase(); } catch(e){}
-            var isCenter = !!CENTER[k];
-            var isRight = !!RIGHT[k];
-            var isBlock = !!BLOCK[k];
+            var ptxt = ""; try { ptxt = p.contents; } catch(eT){}
+            var k = key(ptxt);
+            var isCenter = (k.length >= 4) ? !!CENTER[k] : false;
+            var isRight = (k.length >= 4) ? !!RIGHT[k] : false;
+            var isBlock = (k.length >= 4) ? !!BLOCK[k] : false;
+
             if (isCenter){
                 try { if (p.justification != Justification.CENTER_ALIGN){ p.justification = Justification.CENTER_ALIGN; nCenter++; } } catch(e){}
             } else if (isRight){
                 try { if (p.justification != Justification.RIGHT_ALIGN){ p.justification = Justification.RIGHT_ALIGN; nRight++; } } catch(e){}
             }
-            if ((sn.indexOf("quote") >= 0 || sn.indexOf("block") >= 0) && !isBlock && !isCenter && !isRight){
+
+            var sn = ""; try { sn = p.appliedParagraphStyle.name.toLowerCase(); } catch(e){}
+            if ((sn.indexOf("quote") >= 0 || sn.indexOf("block") >= 0) && !isBlock && !isCenter && !isRight && k.length >= 4){
                 try { if (bodyStyle){ p.appliedParagraphStyle = bodyStyle; nBlock++; } } catch(e){}
             }
-            var ptxt = p.contents;
+
+            // Always guard paragraphs with soft breaks (  or 
+) from loose justification
             if (ptxt.indexOf("\u2028") >= 0 || ptxt.indexOf("\n") >= 0){
                 try {
                     if (isRight){

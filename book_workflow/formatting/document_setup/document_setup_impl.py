@@ -7,8 +7,17 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).resolve().parents[1]
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
+PACKAGE_DIR = Path(__file__).resolve().parents[2]
+if str(PACKAGE_DIR) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_DIR))
+CORE_DIR = PACKAGE_DIR / "core"
+if str(CORE_DIR) not in sys.path:
+    sys.path.insert(0, str(CORE_DIR))
 
-from core.idml_utils import find_main_story, lname, parse, write_xml
+try:
+    from core.idml_utils import find_main_story, lname, parse, write_xml
+except ImportError:
+    from idml_utils import find_main_story, lname, parse, write_xml
 
 # Standard 5.5 x 8.5 in dimensions in points
 PAGE_WIDTH = 396.0
@@ -122,18 +131,53 @@ def apply_spreads_and_pages(target_dir):
     # Page 1: Title, Page 2: Copyright, Page 3: TOC, Page 4: Blank after TOC,
     # Page 5: About Author, Page 6: Blank after About Author -> Body starts on Page 7.
     # If no About Author: Body starts on Page 5.
-    has_author_page = False
-    stories_dir = Path(target_dir) / "Stories"
-    if stories_dir.is_dir():
-        for sf in stories_dir.glob("*.xml"):
-            try:
-                st_txt = sf.read_text(encoding="utf-8", errors="ignore").lower()
-                if "sobre la autor" in st_txt or "about the author" in st_txt:
-                    has_author_page = True
-                    break
-            except Exception:
-                pass
-    body_start_page = 7 if has_author_page else 5
+    detected_body_start = None
+    for sp in sorted(spread_files):
+        try:
+            sp_txt = sp.read_text(encoding="utf-8", errors="ignore")
+            for pm in re.finditer(r'<Page\b[^>]*\bName="(\d+)"[^>]*\bAppliedMaster="([^"]+)"', sp_txt):
+                p_num = int(pm.group(1))
+                p_m = pm.group(2)
+                if p_num >= 5 and p_m != "n":
+                    if detected_body_start is None or p_num < detected_body_start:
+                        detected_body_start = p_num
+        except Exception:
+            pass
+
+    if detected_body_start is not None and detected_body_start % 2 == 1:
+        body_start_page = detected_body_start
+    else:
+        toc_lines = 0
+        stories_dir = Path(target_dir) / "Stories"
+        if stories_dir.is_dir():
+            for sf in stories_dir.glob("*.xml"):
+                try:
+                    st_txt = sf.read_text(encoding="utf-8", errors="ignore")
+                    if "contents" in st_txt.lower() or "contenido" in st_txt.lower():
+                        for tm in re.finditer(r"<Content>([^<]+)</Content>", st_txt):
+                            t_txt = tm.group(1).strip()
+                            if t_txt and re.search(r"\d+$", t_txt):
+                                toc_lines += 1
+                except Exception:
+                    pass
+        if toc_lines <= 22:
+            toc_pages = 1
+        elif toc_lines <= 51:
+            toc_pages = 2
+        elif toc_lines <= 80:
+            toc_pages = 3
+        else:
+            import math
+            toc_pages = 1 + int(math.ceil((toc_lines - 22) / 29.0))
+
+        last_toc = 4 + max(1, toc_pages)
+        if last_toc % 2 == 1:
+            body_start_page = last_toc + 2
+        else:
+            body_start_page = last_toc + 1
+
+        if body_start_page % 2 == 0:
+            body_start_page += 1
 
     for sp in spread_files:
         try:

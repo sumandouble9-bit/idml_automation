@@ -381,15 +381,51 @@ def _normalize_one_idml(src_path: str, dst_path: str, reference_path: str = None
                 master_id = m_self.group(1)
                 break
 
-    # Discover body start page: 7 if About Author exists, else 5
-    has_author = False
-    for name in names:
-        if name.startswith("Stories/") and name.endswith(".xml"):
-            s_lower = members[name].decode("utf-8", "ignore").lower()
-            if "sobre la autor" in s_lower or "about the author" in s_lower:
-                has_author = True
-                break
-    body_start_page = 7 if has_author else 5
+    # Discover body start page dynamically:
+    # 1. Check existing spreads for the first body page with AppliedMaster != "n"
+    detected_body_start = None
+    for name in sorted(names):
+        if name.startswith("Spreads/Spread_") and name.endswith(".xml"):
+            raw_sp = members[name].decode("utf-8", "ignore")
+            for pm in re.finditer(r'<Page\b[^>]*\bName="(\d+)"[^>]*\bAppliedMaster="([^"]+)"', raw_sp):
+                p_num = int(pm.group(1))
+                p_m = pm.group(2)
+                if p_num >= 5 and p_m != "n":
+                    if detected_body_start is None or p_num < detected_body_start:
+                        detected_body_start = p_num
+
+    if detected_body_start is not None and detected_body_start % 2 == 1:
+        body_start_page = detected_body_start
+    else:
+        # 2. Dynamic formula from TOC entries: Author P3, Blank P4, TOC P5+
+        toc_lines = 0
+        for name in names:
+            if name.startswith("Stories/") and name.endswith(".xml"):
+                s_lower = members[name].decode("utf-8", "ignore").lower()
+                if "contents" in s_lower or "contenido" in s_lower:
+                    raw_s = members[name].decode("utf-8", "ignore")
+                    for tm in re.finditer(r"<Content>([^<]+)</Content>", raw_s):
+                        t_txt = tm.group(1).strip()
+                        if t_txt and re.search(r"\d+$", t_txt):
+                            toc_lines += 1
+        if toc_lines <= 22:
+            toc_pages = 1
+        elif toc_lines <= 51:
+            toc_pages = 2
+        elif toc_lines <= 80:
+            toc_pages = 3
+        else:
+            import math
+            toc_pages = 1 + int(math.ceil((toc_lines - 22) / 29.0))
+
+        last_toc = 4 + max(1, toc_pages)
+        if last_toc % 2 == 1:
+            body_start_page = last_toc + 2
+        else:
+            body_start_page = last_toc + 1
+
+        if body_start_page % 2 == 0:
+            body_start_page += 1
 
     for name, blob in list(members.items()):
         lower = name.lower()

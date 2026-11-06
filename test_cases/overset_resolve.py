@@ -40,6 +40,16 @@ JS_RESOLVE_OVERSET = """
                     return info;
                 }
 
+                // An empty EVEN page is correct when the next paragraph starts on the next ODD page (front-matter
+                // flow: chapters always start on a recto page), so it is a blank page and not a jam.
+                function intentionalBlank(frame, story, page) {
+                    try {
+                        if ((page.documentOffset + 1) % 2 !== 0) return false;
+                        var idx = frame.previousTextFrame.characters[-1].index + 1;
+                        return story.characters[idx].paragraphs[0].startParagraph === StartParagraph.NEXT_ODD_PAGE;
+                    } catch (e) { return false; }
+                }
+
                 for (var i = 0; i < doc.stories.length; i++) {
                     var s = doc.stories[i];
                     s.recompose();
@@ -60,7 +70,7 @@ JS_RESOLVE_OVERSET = """
                         lastFrame = newFrame;
                         s.recompose();
 
-                        if (lastFrame.characters.length === 0 && lastFrame.overflows) {
+                        if (lastFrame.characters.length === 0 && lastFrame.overflows && !intentionalBlank(lastFrame, s, newPage)) {
                             // JAM: the next content unit cannot fit or break on a normal page.
                             var stuck = describeStuck(lastFrame, s);
 

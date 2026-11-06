@@ -20,8 +20,8 @@ class BookFormatter:
         DocumentSetupPage,
         TitlePage,
         CopyrightPage,
-        TableOfContentsPage,
         AuthorPage,
+        TableOfContentsPage,
         TypographyFormatter,
     )
 

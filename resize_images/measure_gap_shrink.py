@@ -1,26 +1,3 @@
-"""Analyse the previous-page bottom gap caused by each pushed image and the shrink % needed to fill it.
-
-Read-only: opens an IDML, composes it, and for every image that was pushed to the TOP of its page
-(so the page before it ends with an empty gap), reports the previous-page gap and how much the image
-would have to shrink -- in percent -- for the image AND its caption to flow back up and fill that gap.
-Nothing is changed or saved.
-
-For each such image it prints:
-  PrevGap  = empty pt on the previous page (last body baseline down to the bottom margin).
-  CapH     = estimated caption height (pt), since the caption must travel with the image.
-  NeedH    = image height that would exactly fill the gap = PrevGap - CapH - padding.
-  CurH     = the image's current height.
-  Shrink%  = (CurH - NeedH) / CurH * 100  -- how much smaller the image must get.
-  Possible = YES only when NeedH stays at or above the 40%-of-frame floor; otherwise NO
-             (filling the gap would shrink the image below the floor, so it is left where it is).
-
-Input : a book id (resize_images\\output\\<book>\\<book>.idml, else final_output_files\\idml_files\\<book>.idml)
-        or a full .idml path.  Default = every resized book under resize_images\\output.
-Output: resize_images\\output\\<book>\\<book>_gap_shrink.txt  (one aligned table).
-
-Usage: python measure_gap_shrink.py [book_id | idml_path]
-"""
-
 import os
 import sys
 import glob

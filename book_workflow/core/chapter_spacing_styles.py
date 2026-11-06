@@ -444,14 +444,24 @@ def update_spreads_master_pages(files: dict, first_content_page: int) -> None:
                 s_root = ET.fromstring(files[sf])
                 pages = s_root.findall(".//Page")
                 modified = False
+                master_id = None
+                for mf in files:
+                    if mf.startswith("MasterSpreads/MasterSpread_") and mf.endswith(".xml"):
+                        m_srch = re.search(r'<MasterSpread\b[^>]*\bSelf="([^"]+)"', files[mf].decode("utf-8", "ignore"))
+                        if m_srch:
+                            master_id = m_srch.group(1)
+                            break
+                if not master_id:
+                    master_id = "ub9"
+
                 for p in pages:
                     if page_index < first_content_page:
                         if p.attrib.get("AppliedMaster") != "n":
                             p.set("AppliedMaster", "n")
                             modified = True
                     else:
-                        if p.attrib.get("AppliedMaster") == "n":
-                            p.set("AppliedMaster", "ub9")
+                        if p.attrib.get("AppliedMaster") == "n" or p.attrib.get("AppliedMaster") != master_id:
+                            p.set("AppliedMaster", master_id)
                             modified = True
                     page_index += 1
                 if modified:

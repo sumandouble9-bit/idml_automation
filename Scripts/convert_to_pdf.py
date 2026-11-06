@@ -193,6 +193,26 @@ def convert_single_idml(app, idml_path: Path, output_pdf_path: Path) -> dict:
         }}
     }} catch(eJust) {{}}
 
+    // Guard paragraphs containing soft breaks (line separator or newline) or poems/index from being justified across full width
+    try {{
+        for (var s = 0; s < doc.stories.length; s++) {{
+            var paras = doc.stories[s].paragraphs;
+            for (var p = 0; p < paras.length; p++) {{
+                try {{
+                    var pp = paras[p];
+                    var ptxt = pp.contents;
+                    var _ls = String.fromCharCode(8232);
+                    var _lf = String.fromCharCode(10);
+                    if (ptxt.indexOf(_ls) >= 0 || ptxt.indexOf(_lf) >= 0) {{
+                        if (pp.justification == Justification.LEFT_JUSTIFIED || pp.justification == Justification.FULLY_JUSTIFIED) {{
+                            pp.justification = Justification.LEFT_ALIGN;
+                        }}
+                    }}
+                }} catch(eP) {{}}
+            }}
+        }}
+    }} catch(eSoft) {{}}
+
     // (Removed aggressive fig caption length check that incorrectly converted valid long captions to body text)
 
     // User Requirement: if content is not showing full content, increase text frame preserving other formatting
@@ -251,6 +271,45 @@ def convert_single_idml(app, idml_path: Path, output_pdf_path: Path) -> dict:
                 print(f"               JAM: {jl[:160]}")
     except Exception as e_ov:
         print(f"      [Overset] resolver note: {e_ov}")
+
+    # Re-apply EPUB paragraph alignment (center/right) and soft-break guard
+    try:
+        import paragraph_styles_format
+        stem = idml_path.stem.split("_")[0]
+        epub_cand = None
+        for cand_dir in (ROOT_DIR / "epub_input_files", ROOT_DIR.parent / "epub_input_files"):
+            if cand_dir.is_dir():
+                exact = cand_dir / f"{idml_path.stem}.epub"
+                if exact.exists():
+                    epub_cand = exact
+                    break
+                exact_stem = cand_dir / f"{stem}.epub"
+                if exact_stem.exists():
+                    epub_cand = exact_stem
+                    break
+                prefix_matches = list(cand_dir.glob(f"{stem}*.epub"))
+                if prefix_matches:
+                    epub_cand = prefix_matches[0]
+                    break
+        paragraph_styles_format.run(app, str(epub_cand) if (epub_cand and epub_cand.exists()) else None)
+        try:
+            from injection import injection_scripts as inj_js
+            app.DoScript(inj_js.sanitize_vertical_justification_js(), JS)
+        except Exception:
+            pass
+    except Exception as e_ps:
+        pass
+
+    # Real-layout front matter: chapters on an odd page, footer master from the real first content page.
+    try:
+        from book_workflow.core.frontmatter_flow import apply_frontmatter_flow, layout_changed
+        ff_report = apply_frontmatter_flow(app)
+        print(f"      [Front matter] {ff_report}")
+        if layout_changed(ff_report):
+            import overset_resolve
+            overset_resolve.run(app)   # content moved a page: re-resolve overset
+    except Exception as e_ff:
+        print(f"      [Front matter] pass skipped: {e_ff}")
 
     # PHASE 3: trim trailing blank pages, SAVE the resolved pagination back to
     # the IDML (so the IDML deliverable matches the PDF - the overset fix lives

@@ -1,12 +1,3 @@
-"""STEP 1: shrink each image by a table percentage of the FULL block (image + fig caption) height.
-
-Runs BEFORE STEP 2. The band is chosen from the full block height (image height + caption height) as a
-share of the body frame; the shrink is applied to the image, with the caption travelling with it. Blocks
-below 40% of the frame are left for STEP 2. Neither step shrinks the block below 35% of the frame.
-    90-100% -> 35%   80-90% -> 40%   70-80% -> 40%   60-70% -> 45%   50-60% -> 45%   40-50% -> 30%
-Only image size changes -- no text, caption, font, style or vertical-justification edits.
-"""
-
 from . import geometry as G
 from .indesign_jobs import JS
 

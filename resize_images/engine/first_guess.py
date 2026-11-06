@@ -1,5 +1,3 @@
-"""STEP 3: the builder's own page estimate -- pre-shrink images that will not fit the space left on a page."""
-
 from . import geometry as G
 
 

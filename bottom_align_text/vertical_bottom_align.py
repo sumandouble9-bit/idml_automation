@@ -1,22 +1,3 @@
-"""Vertical bottom-align the body text (FIRST step, on the raw input) into a separate output folder.
-
-Runs BEFORE formatting. Reads the raw book IDML from idml_input_files and writes an aligned copy to
-Output/vertical_bottom_align/<book>.idml -- it never touches the main/resize output. Formatting then
-consumes that aligned copy.
-
-Rules (matching the manual Find/Change > Object step, refined):
-  * Only the main body story is touched (footers/headers and any front-matter stories are left alone).
-  * The raw input has no Double9 TOC page yet, so front matter is skipped by detecting the FIRST
-    chapter/section break (StartParagraph = NextPage/NextOdd/NextEven/NextFrame, or a chapter/title
-    paragraph style). Frames before that first break are left as-is; bottom-align starts there.
-  * Body frames below that point get VerticalJustification = JustifyAlign with a 1pt bottom inset.
-  * Each chapter-END frame (the last frame before the next section) and any SPARSE page (filled below
-    ~72% of its line capacity) is TOP-aligned instead, so chapter-end text is never stretched and no
-    extra vertical space is added between its lines. Table frames are left as-is.
-
-Usage: python bottom_align_text/vertical_bottom_align.py [book_id | idml_path | folder]   (no arg = every idml_input_files/*.idml)
-"""
-
 import os
 import sys
 import glob
@@ -71,7 +52,35 @@ def _apply_js():
         var tfp = tf.textFramePreferences;
         var pgName="?"; try{ pgName = pg.name; }catch(e){}
 
-        if (tf.tables.length > 0){ rep.tables++; logs.push("p."+pgName+" table frame -> left as-is"); continue; }
+        if (tf.tables.length > 0){
+            tfp.verticalJustification = VerticalJustification.TOP_ALIGN;
+            rep.tables++;
+            logs.push("p."+pgName+" table frame -> TOP align");
+            continue;
+        }
+
+        var hasImg = false;
+        try { hasImg = (tf.allGraphics.length > 0); } catch(eG){}
+        if (hasImg){
+            tfp.verticalJustification = VerticalJustification.TOP_ALIGN;
+            logs.push("p."+pgName+" graphic frame -> TOP align");
+            continue;
+        }
+
+        var hasHead = false;
+        try {
+            for (var pi = 0; pi < tf.paragraphs.length; pi++){
+                var sn = tf.paragraphs[pi].appliedParagraphStyle.name.toLowerCase();
+                if (sn.indexOf("chapter") >= 0 || sn.indexOf("sub-heading") >= 0 || sn.indexOf("heading") >= 0 || sn.indexOf("title") >= 0){
+                    hasHead = true; break;
+                }
+            }
+        } catch(eH){}
+        if (hasHead){
+            tfp.verticalJustification = VerticalJustification.TOP_ALIGN;
+            logs.push("p."+pgName+" heading frame -> TOP align");
+            continue;
+        }
 
         // Is the frame full? Derive capacity from the frame's OWN geometry and measured line height.
         var gb = tf.geometricBounds, h = gb[2]-gb[0];
@@ -94,7 +103,7 @@ def _apply_js():
             logs.push("p."+pgName+" chapter-end ("+nl+"/"+cap.toFixed(0)+" lines) -> TOP align (no stretch)");
         } else {
             tfp.verticalJustification = VerticalJustification.JUSTIFY_ALIGN;
-            tfp.verticalThreshold = 0;
+            tfp.verticalThreshold = 1.0;
             if (ins instanceof Array){ tfp.insetSpacing = [ins[0], ins[1], BOTTOM, ins[3]]; }
             else { tfp.insetSpacing = [ins, ins, BOTTOM, ins]; }
             rep.justified++;

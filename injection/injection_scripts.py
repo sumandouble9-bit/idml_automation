@@ -543,6 +543,16 @@ def resolve_overset_js():
                     return info;
                 }
 
+                // An empty EVEN page is correct when the next paragraph starts on the next ODD page (front-matter
+                // flow: chapters always start on a recto page), so it is a blank page and not a jam.
+                function intentionalBlank(frame, story, page) {
+                    try {
+                        if ((page.documentOffset + 1) % 2 !== 0) return false;
+                        var idx = frame.previousTextFrame.characters[-1].index + 1;
+                        return story.characters[idx].paragraphs[0].startParagraph === StartParagraph.NEXT_ODD_PAGE;
+                    } catch (e) { return false; }
+                }
+
                 // Shrink the oversized anchored image that is jamming the flow so a
                 // margin-sized frame can accept it. The text frame is NEVER grown past
                 // the page margins; instead the image is scaled down proportionally
@@ -610,7 +620,7 @@ def resolve_overset_js():
                         lastFrame = newFrame;
                         s.recompose();
 
-                        if (lastFrame.characters.length === 0 && lastFrame.overflows) {
+                        if (lastFrame.characters.length === 0 && lastFrame.overflows && !intentionalBlank(lastFrame, s, newPage)) {
                             // JAM: the next content unit cannot fit or break on a normal page.
                             var stuck = describeStuck(lastFrame, s);
 
@@ -711,3 +721,60 @@ def export_js(clean_output_idml):
                 app.activeDocument.close(SaveOptions.NO);
                 app.scriptPreferences.enableRedraw = true;
                 """
+
+def sanitize_vertical_justification_js():
+    """ExtendScript: ensure frames with graphics, tables, headings, or sparse text are TOP_ALIGN, never stretched."""
+    return r"""
+    (function(){
+        var doc = app.activeDocument;
+        var J = VerticalJustification;
+        var fixed = 0;
+        for (var s = 0; s < doc.stories.length; s++){
+            var st = doc.stories[s];
+            for (var f = 0; f < st.textContainers.length; f++){
+                var tf = st.textContainers[f];
+                if (tf.constructor.name !== "TextFrame") continue;
+                var pg = tf.parentPage;
+                if (!pg) continue;
+                var tfp = tf.textFramePreferences;
+                var hasImg = false;
+                try { hasImg = (tf.allGraphics.length > 0); } catch(eG){}
+                var hasTbl = false;
+                try { hasTbl = (tf.tables.length > 0); } catch(eT){}
+                var hasHead = false;
+                try {
+                    for (var pi = 0; pi < tf.paragraphs.length; pi++){
+                        var sn = tf.paragraphs[pi].appliedParagraphStyle.name.toLowerCase();
+                        if (sn.indexOf("chapter") >= 0 || sn.indexOf("sub-heading") >= 0 || sn.indexOf("heading") >= 0 || sn.indexOf("title") >= 0){
+                            hasHead = true; break;
+                        }
+                    }
+                } catch(eH){}
+
+                var isSparse = false;
+                try {
+                    var gb = tf.geometricBounds;
+                    var h = gb[2] - gb[0];
+                    var nl = tf.lines.length;
+                    if (nl < 4) { isSparse = true; }
+                    else {
+                        var lh = (tf.lines[-1].baseline - tf.lines[0].baseline) / (nl - 1);
+                        var cap = (lh > 0) ? (h / lh) : 0;
+                        if (cap > 0 && (nl / cap) < 0.72) isSparse = true;
+                    }
+                } catch(eS){}
+
+                if (hasImg || hasTbl || hasHead || isSparse){
+                    if (tfp.verticalJustification !== J.TOP_ALIGN){
+                        tfp.verticalJustification = J.TOP_ALIGN;
+                        fixed++;
+                    }
+                } else if (tfp.verticalJustification === J.JUSTIFY_ALIGN){
+                    tfp.verticalThreshold = 1.0;
+                }
+            }
+        }
+        return "SANITIZED_VJUST=" + fixed;
+    })();
+    """
+

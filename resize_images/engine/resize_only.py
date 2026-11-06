@@ -1,12 +1,3 @@
-"""Resize-only mode: open the IDML and resize images (STEP 1 table shrink + STEP 2 gap-fill) -- nothing else.
-
-Reads ONLY the IDML input (plain <book>.idml from final_output_files/idml_files). It does NOT read the
-EPUB or the source image files, and changes NO text, fonts, paragraph/character styles, captions or
-vertical alignment. Each image's size range [image.h*rmin .. image.h] is derived from its placed
-geometry and the page-area rules (AREA_MIN / AREA_MAX, column width, frame height). STEP 1 and STEP 2
-each write their own log file.
-"""
-
 import os
 import sys
 import glob

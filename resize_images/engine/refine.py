@@ -1,13 +1,3 @@
-"""STEP 2: keep image+caption together and gap-fill each image-caused gap (IDML only).
-
-For every page whose bottom gap is image-caused (the next page starts with a pushed image), the image is
-resized so the FULL block (image + fig caption) flows up and fills that gap, bounded by its own size range
-[image.h*rmin .. image.h] and by the 35%-of-frame floor on the block. The blocks STEP 1 deferred (full
-block below 40% of the frame) are handled here too. A straddling image+caption is shrunk in gentle 5%
-steps until both sit on one page. Neither the block nor the image is ever shrunk below 35% of the frame.
-Only image sizes change -- no text, caption, font, style or vertical-justification edits.
-"""
-
 from . import geometry as G
 from .indesign_jobs import JS
 

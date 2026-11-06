@@ -124,13 +124,24 @@ def apply_captions(app, caption_map, caption_styles=None):
             if (alreadyBelow){
                 // If a duplicate caption exists directly above the image, remove it
                 try {
-                    var _first0 = imgPara.characters[0].index;
-                    if (_first0 >= 1){
+                    for (var _up = 0; _up < 6; _up++){
+                        var _first0 = imgPara.characters[0].index;
+                        if (_first0 < 1) break;
                         var _aboveP = host.characters[_first0 - 1].paragraphs[0];
                         var _hasImgA = false;
                         try { _hasImgA = (_aboveP.allPageItems.length > 0); } catch(e0b){}
+                        var _abTxt = norm(_aboveP.contents);
+                        if (!_hasImgA && _abTxt.length === 0){
+                            _first0 = _aboveP.characters[0].index;
+                            if (_first0 < 1) break;
+                            _aboveP = host.characters[_first0 - 1].paragraphs[0];
+                            try { _hasImgA = (_aboveP.allPageItems.length > 0); } catch(e0b2){}
+                        }
                         if (!_hasImgA && capMatch(_aboveP.contents)){
                             _aboveP.remove();
+                            imgPara = ip.paragraphs[0];
+                        } else {
+                            break;
                         }
                     }
                 } catch(e0c){}
@@ -178,6 +189,29 @@ def apply_captions(app, caption_map, caption_styles=None):
             if (capIdx < host.characters.length){
                 styleCaption(host.characters[capIdx].paragraphs[0]);
             }
+            // Remove any duplicate caption above the image now that caption is below
+            try {
+                for (var _up2 = 0; _up2 < 6; _up2++){
+                    var _f1 = imgP.characters[0].index;
+                    if (_f1 < 1) break;
+                    var _ab1 = host.characters[_f1 - 1].paragraphs[0];
+                    var _hImg1 = false;
+                    try { _hImg1 = (_ab1.allPageItems.length > 0); } catch(eU1){}
+                    var _abTxt1 = norm(_ab1.contents);
+                    if (!_hImg1 && _abTxt1.length === 0){
+                        _f1 = _ab1.characters[0].index;
+                        if (_f1 < 1) break;
+                        _ab1 = host.characters[_f1 - 1].paragraphs[0];
+                        try { _hImg1 = (_ab1.allPageItems.length > 0); } catch(eU2){}
+                    }
+                    if (!_hImg1 && capMatch(_ab1.contents)){
+                        _ab1.remove();
+                        imgP = anchorChar.paragraphs[0];
+                    } else {
+                        break;
+                    }
+                }
+            } catch(eRemAbove){}
             applied++;
         } catch (eG) {}
     }

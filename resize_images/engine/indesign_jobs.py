@@ -1,5 +1,3 @@
-"""InDesign COM helpers: connect, open, page count, export IDML/PDF, close."""
-
 import time
 import subprocess
 

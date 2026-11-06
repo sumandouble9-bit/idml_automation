@@ -1,5 +1,3 @@
-"""Orchestrate the 4-step image engine for one or more books: EPUB -> size -> place -> refine -> export + audit."""
-
 import os
 import re
 import sys

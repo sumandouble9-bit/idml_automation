@@ -152,6 +152,69 @@ def normalize_heading(s: str) -> str:
     return " ".join(s.upper().split())
 
 
+# The TOC heading is always in the front matter, so only where the TOC STARTS is searched in a bounded span;
+# its LENGTH is not bounded (a long TOC can run over any number of pages).
+TOC_START_SEARCH_PAGES = 12
+TOC_HEADING_TEXTS = ["CONTENTS", "TABLE OF CONTENTS", "CONTENIDO", "ÍNDICE", "INDICE"]
+# A continuation page counts as TOC when this share of its lines end in a page number.
+TOC_NUMBERED_LINE_SHARE = 0.5
+TOC_MIN_LINES = 3
+# A dot-leader line holds a RUN of dots ("...." or ". . . ."); prose with abbreviations ("6s. 8d.") never does.
+TOC_LEADER_RUN = re.compile(r"(?:\.\s?){4,}")
+TOC_LEADER_LINE_SHARE = 0.25
+# A numbered-list TOC shows bare list numbers ("3.") on their own lines; this share of such lines marks a TOC page.
+TOC_BARE_NUMBER_SHARE = 0.25
+TOC_BARE_NUMBER = re.compile(r"^(?:\d{1,3}|[IVXLCDM]{1,7})[.)]?$")
+
+
+def looks_like_toc_page(lines):
+    """True when the page lines are TOC entries: dot leaders, or most lines ending in a page number."""
+    if not lines:
+        return False
+    leader_lines = sum(1 for l in lines if TOC_LEADER_RUN.search(l))
+    if leader_lines / len(lines) >= TOC_LEADER_LINE_SHARE:
+        return True
+    numbered = sum(1 for l in lines if re.search(r"\d{1,4}\s*$", l))
+    bare = sum(1 for l in lines if TOC_BARE_NUMBER.match(l))
+    if len(lines) < TOC_MIN_LINES:
+        return False
+    return numbered / len(lines) >= TOC_NUMBERED_LINE_SHARE or bare / len(lines) >= TOC_BARE_NUMBER_SHARE
+
+
+def _text_lines(text):
+    """The non-empty, stripped lines of a page's text."""
+    return [l.strip() for l in text.split("\n") if l.strip()]
+
+
+def _has_toc_heading(text, lines, heading_in_top_lines):
+    """True when the page carries the TOC heading: in its first lines, or anywhere on the page."""
+    if heading_in_top_lines:
+        return any(h in [l.upper() for l in lines[:3]] for h in TOC_HEADING_TEXTS)
+    return any(h in text.upper() for h in TOC_HEADING_TEXTS)
+
+
+def detect_toc_pages(doc, start_page_index=0, heading_in_top_lines=True):
+    """Return the 1-based PDF pages of the table of contents, however many there are.
+
+    The TOC starts at the first page (searched within the front matter) holding the TOC heading, continues on every
+    following page that still looks like TOC entries, and stops at the first page that does not.
+    """
+    pages = set()
+    for pno in range(start_page_index, len(doc)):
+        text = doc[pno].get_text()
+        lines = _text_lines(text)
+        if not pages:
+            if pno >= TOC_START_SEARCH_PAGES:
+                break
+            if _has_toc_heading(text, lines, heading_in_top_lines):
+                pages.add(pno + 1)
+        elif looks_like_toc_page(lines):
+            pages.add(pno + 1)
+        else:
+            break
+    return pages
+
+
 def extract_pdf_chapter_pages(pdf_path: Path):
     """
     Extracts real page numbers for each chapter heading directly from the generated PDF using PyMuPDF.
@@ -164,14 +227,7 @@ def extract_pdf_chapter_pages(pdf_path: Path):
         return []
 
     doc = pymupdf.open(str(pdf_path))
-    toc_pages = set()
-    for pno in range(min(12, len(doc))):
-        txt = doc[pno].get_text()
-        if any(k in txt.upper() for k in ["CONTENTS", "TABLE OF CONTENTS", "CONTENIDO", "ÍNDICE", "INDICE"]):
-            toc_pages.add(pno + 1)
-        elif toc_pages and (pno + 1) in [max(toc_pages) + 1]:
-            if "...." in txt or txt.count(".") > 15:
-                toc_pages.add(pno + 1)
+    toc_pages = detect_toc_pages(doc, heading_in_top_lines=False)
 
     chaps = []
     curr_part = ""
@@ -237,14 +293,7 @@ def sync_idml_toc_from_pdf(idml_path: Path, pdf_path: Path) -> int:
         return 0
 
     # 1. Identify front matter / TOC pages strictly in front matter
-    toc_pages = set()
-    for pno in range(2, min(7, len(doc))):
-        lines = [l.strip() for l in doc[pno].get_text().split("\n") if l.strip()]
-        top = [l.upper() for l in lines[:3]]
-        if any(h in top for h in ["CONTENTS", "TABLE OF CONTENTS", "CONTENIDO", "ÍNDICE", "INDICE"]):
-            toc_pages.add(pno + 1)
-        elif toc_pages and (pno + 1) == max(toc_pages) + 1 and any("." * 4 in l for l in lines):
-            toc_pages.add(pno + 1)
+    toc_pages = detect_toc_pages(doc, start_page_index=2)
 
     last_toc_page = max(toc_pages) if toc_pages else 5
     if last_toc_page % 2 == 1:

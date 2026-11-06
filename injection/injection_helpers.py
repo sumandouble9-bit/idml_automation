@@ -152,3 +152,43 @@ def source_sidebyside_pairs(source_idml):
     except Exception:
         pass
     return pairs
+
+
+_ACTIVATE_DOC_JS = "try { var __d = app.documents.itemByID(%d); if (__d.isValid) { app.activeDocument = __d; } } catch (__e) {}"
+
+
+class DocPinnedApp:
+    """Proxy for the InDesign application that makes the injector's own document active before every script.
+
+    Every injection script works on app.activeDocument. If another document becomes active while the injector runs
+    (for example someone clicks another open document), the placeholders are 'not found' and images silently fail.
+    The proxy re-activates the injector's document before each script, so switching documents in InDesign cannot
+    break a run.
+    """
+
+    def __init__(self, app, doc_id):
+        self.raw = app
+        self._activate = _ACTIVATE_DOC_JS % doc_id
+
+    def DoScript(self, script, language, *args):
+        """Activate the pinned document, then run the script."""
+        try:
+            self.raw.DoScript(self._activate, JS_LANG)
+        except Exception:
+            pass
+        return self.raw.DoScript(script, language, *args)
+
+    def __getattr__(self, name):
+        return getattr(self.raw, name)
+
+
+def pin_document(app):
+    """Return `app` wrapped so every script runs against the document that is active right now."""
+    app = unpin_document(app)
+    doc_id = int(app.DoScript("app.activeDocument.id + '';", JS_LANG))
+    return DocPinnedApp(app, doc_id)
+
+
+def unpin_document(app):
+    """Return the raw application behind a pinned proxy (or `app` itself when it is not pinned)."""
+    return app.raw if isinstance(app, DocPinnedApp) else app

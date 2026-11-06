@@ -1,5 +1,3 @@
-"""STEP 2: resize each planned image to its target points and place it at its ###Insert### marker."""
-
 import os
 
 from . import geometry as G

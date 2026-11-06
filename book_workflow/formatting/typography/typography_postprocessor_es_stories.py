@@ -343,7 +343,16 @@ def restyle_psr_es(psr, parent_map, toc_norms, toc_clean_norms, stats):
             _orig_just == "RightAlign"
             or any(k in _sl for k in ("right", "signature", "signed"))
         )
-        _has_soft = " " in txt or _is_verse_psr(psr) or _is_true_verse_txt(txt) or _soft_break_would_stretch(txt)
+        _has_soft = (
+            "\u2028" in txt
+            or "\n" in txt
+            or "\r" in txt
+            or "index" in _sl
+            or any("\u2028" in (c.text or "") for c in psr.iter() if lname(c.tag) == "Content")
+            or _is_verse_psr(psr)
+            or _is_true_verse_txt(txt)
+            or _soft_break_would_stretch(txt)
+        )
 
         if style in ("ParagraphStyle/Normal", "ParagraphStyle/$ID/[Basic Paragraph]", "ParagraphStyle/copybody"):
             psr.set("AppliedParagraphStyle", "ParagraphStyle/body_text")

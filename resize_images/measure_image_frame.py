@@ -1,16 +1,3 @@
-"""Measure every anchored image and the gap on its PREVIOUS page -- the single image/gap log.
-
-Read-only: opens the IDML in InDesign, composes it, and for each image (in page order) reports its
-size, the body text-frame size, and the empty gap on the previous page (from the last line of body
-text down to the bottom margin -- the glue line -- never the full page). Nothing is changed or saved.
-
-Inputs  : resize_images\\output\\<book>\\<book>.idml if present (the resized output), else the plain
-          final_output_files\\idml_files\\<book>.idml -- or pass a full path.
-Output  : resize_images\\output\\<book>\\<book>_image_gaps.txt (one aligned table; the single log).
-
-Usage: python measure_image_frame.py [book_id | idml_path]   (no arg = every resized/plain book)
-"""
-
 import os
 import sys
 import glob

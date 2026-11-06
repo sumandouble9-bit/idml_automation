@@ -157,334 +157,241 @@ def _trim_block_spacers(toc_psrs, author_psrs, content_psrs):
     # Format all chapters inside content_psrs so every chapter starts on a new page with identical top spacing
 
 
-def _format_content_chapters(content_psrs):
-    """Format each chapter heading in the content block for a fresh page with reference top spacing; return the rebuilt list."""
-    new_content_psrs = []
-    seen_first_chapter = False
-    
-    ci = 0
-    while ci < len(content_psrs):
-        c_p = content_psrs[ci]
-        if _lname(c_p.tag) != "ParagraphStyleRange":
-            new_content_psrs.append(c_p)
-            ci += 1
+SHORT_HEADING_CHARS = 60
+HEADING_STYLE_KEYS = ("heading", "title", "part", "after_chapter")
+HEADING_NUMERAL_RE = re.compile(r"^\s*(?:PART|PARTE|BOOK|LIBRO|[IVXLCDM0-9]+)\b", re.I)
+
+
+def _is_paired_heading(prev_p, c_txt):
+    """True when the heading is the second line of a paired heading, i.e. it follows a heading-like paragraph.
+
+    A numeral-led line only pairs with a SHORT previous paragraph: a long body paragraph before "II LIVIA AND JULIA"
+    is just the end of the previous chapter, so that heading keeps its own page.
+    """
+    prev_st = prev_p.attrib.get("AppliedParagraphStyle", "").lower()
+    if "chapter_name" in prev_st or "sub-heading" in prev_st or any(k in prev_st for k in HEADING_STYLE_KEYS):
+        return True
+    prev_txt = _get_text(prev_p)
+    if len(prev_txt) > SHORT_HEADING_CHARS:
+        return False
+    return bool(HEADING_NUMERAL_RE.match(prev_txt) or HEADING_NUMERAL_RE.match(c_txt))
+
+
+OBJECT_TAGS = ("Rectangle", "Polygon", "Oval", "Image", "Table")
+NO_CHARACTER_STYLE = "CharacterStyle/$ID/[No character style]"
+
+
+def _has_object(psr):
+    """True when the paragraph holds an anchored object (image, frame, table)."""
+    return any(_lname(k.tag) in OBJECT_TAGS for k in psr.iter())
+
+
+def _previous_real_psr(psrs):
+    """The last paragraph before the current one that carries an object or real text (spacers are skipped)."""
+    for cand in reversed(psrs):
+        if _lname(cand.tag) != "ParagraphStyleRange":
             continue
-            
+        text = _get_text(cand)
+        if _has_object(cand) or (text and text != LS):
+            return cand
+    return None
+
+
+def _strip_csr_breaks(psr):
+    """Remove the character-level page-break attribute from every character range of the paragraph."""
+    for csr in psr.findall("CharacterStyleRange"):
+        csr.attrib.pop("ParagraphBreakType", None)
+
+
+def _format_chapter_heading(c_p):
+    """Give a chapter heading the reference style and spacing, and make sure its last range ends with a break."""
+    c_p.set("AppliedParagraphStyle", "ParagraphStyle/chapter_name")
+    c_p.set("StartParagraph", "Anywhere")
+    c_p.set("SpaceBefore", str(REF_SPACE_BEFORE))
+    c_p.set("SpaceAfter", str(REF_SPACE_AFTER))
+    c_p.set("KeepLinesTogether", "true")
+    c_p.set("KeepWithNext", "2")
+    _strip_csr_breaks(c_p)
+    csrs = list(c_p.findall("CharacterStyleRange"))
+    if csrs and not any(_lname(k.tag) == "Br" for k in csrs[-1]):
+        ET.SubElement(csrs[-1], "Br")
+
+
+def _format_paired_heading(c_p):
+    """Restyle a heading as the second line of a paired heading: same page, centred, small gap above."""
+    c_p.set("AppliedParagraphStyle", "ParagraphStyle/after_chapter_name_heading")
+    c_p.set("StartParagraph", "Anywhere")
+    c_p.attrib.pop("ParagraphBreakType", None)
+    _strip_csr_breaks(c_p)
+    c_p.set("SpaceBefore", "14")
+    c_p.set("SpaceAfter", str(REF_SPACE_AFTER))
+    c_p.set("KeepLinesTogether", "true")
+    c_p.set("KeepWithNext", "2")
+    c_p.set("Justification", "CenterAlign")
+    c_p.set("FirstLineIndent", "0")
+
+
+def _drop_blank_psrs_after(psrs, anchor):
+    """Pop the blank paragraphs that sit between `anchor` and the end of the list (an object paragraph stops it)."""
+    while psrs and psrs[-1] is not anchor:
+        cand = psrs[-1]
+        if _lname(cand.tag) != "ParagraphStyleRange" or _has_object(cand):
+            break
+        if _get_text(cand).replace(LS, "").strip():
+            break
+        psrs.pop()
+
+
+def _drop_trailing_spacers(psrs):
+    """Pop the empty spacer paragraphs at the end of the list so a chapter heading starts on a clean page."""
+    while psrs and _lname(psrs[-1].tag) == "ParagraphStyleRange":
+        last = psrs[-1]
+        if _has_object(last) or _get_text(last) not in ("", LS):
+            break
+        psrs.pop()
+
+
+def _page_break_spacer():
+    """An empty protected paragraph that starts a new page; it precedes every chapter after the first."""
+    psr = ET.Element("ParagraphStyleRange", {
+        "AppliedParagraphStyle": "ParagraphStyle/Normal",
+        "StartParagraph": "NextPage",
+        "ParagraphBreakType": "NextPage",
+        "BlankPageSpacer": "true",
+        "BlankPageProtected": "true",
+    })
+    csr = ET.SubElement(psr, "CharacterStyleRange", {
+        "AppliedCharacterStyle": NO_CHARACTER_STYLE,
+        "ParagraphBreakType": "NextPage",
+    })
+    ET.SubElement(csr, "Content").text = LS
+    ET.SubElement(csr, "Br")
+    return psr
+
+
+def _format_content_chapters(content_psrs):
+    """Format each chapter heading for a fresh page with reference top spacing; return the rebuilt list."""
+    out, seen_first_chapter = [], False
+    for c_p in content_psrs:
+        is_psr = _lname(c_p.tag) == "ParagraphStyleRange"
+        prev = _previous_real_psr(out) if is_psr else None
+        if not is_psr or not is_chapter_heading(c_p, prev):
+            out.append(c_p)
+            continue
         c_txt = _get_text(c_p)
-        prev_p = new_content_psrs[-1] if (new_content_psrs and _lname(new_content_psrs[-1].tag) == "ParagraphStyleRange") else None
-        
-        if is_chapter_heading(c_p, prev_p):
-            is_sub_heading_of_part = False
-            if prev_p is not None:
-                prev_txt = _get_text(prev_p)
-                prev_st = prev_p.attrib.get("AppliedParagraphStyle", "").lower()
-                if (
-                    "chapter_name" in prev_st
-                    or "sub-heading" in prev_st
-                    or any(k in prev_st for k in ["heading", "title", "part"])
-                    or re.match(r"^\s*(?:PART|PARTE|BOOK|LIBRO)\b", prev_txt, re.I)
-                ):
-                    is_sub_heading_of_part = True
-                    
-            c_p.set("AppliedParagraphStyle", "ParagraphStyle/chapter_name")
-            c_p.set("StartParagraph", "Anywhere")
-            c_p.set("SpaceBefore", str(REF_SPACE_BEFORE))
-            c_p.set("SpaceAfter", str(REF_SPACE_AFTER))
-            c_p.set("KeepLinesTogether", "true")
-            c_p.set("KeepWithNext", "2")
-            
-            for csr in c_p.findall("CharacterStyleRange"):
-                if "ParagraphBreakType" in csr.attrib:
-                    del csr.attrib["ParagraphBreakType"]
-                    
-            csrs = list(c_p.findall("CharacterStyleRange"))
-            if csrs:
-                last_csr = csrs[-1]
-                if not any(_lname(k.tag) == "Br" for k in last_csr):
-                    ET.SubElement(last_csr, "Br")
-                    
-            if is_sub_heading_of_part:
-                c_p.set("AppliedParagraphStyle", "ParagraphStyle/after_chapter_name_heading")
-                c_p.set("StartParagraph", "Anywhere")
-                if "ParagraphBreakType" in c_p.attrib:
-                    del c_p.attrib["ParagraphBreakType"]
-                for csr in c_p.findall("CharacterStyleRange"):
-                    if "ParagraphBreakType" in csr.attrib:
-                        del csr.attrib["ParagraphBreakType"]
-                c_p.set("SpaceBefore", "14")
-                c_p.set("SpaceAfter", str(REF_SPACE_AFTER))
-                c_p.set("KeepLinesTogether", "true")
-                c_p.set("KeepWithNext", "2")
-                c_p.set("Justification", "CenterAlign")
-                c_p.set("FirstLineIndent", "0")
-                new_content_psrs.append(c_p)
-                ci += 1
-                continue
-                
-            # If previous children are existing empty spacer PSRs, remove them
-            while new_content_psrs and _lname(new_content_psrs[-1].tag) == "ParagraphStyleRange":
-                last_psr = new_content_psrs[-1]
-                if any(_lname(k.tag) in ("Rectangle", "Polygon", "Oval", "Image", "Table") for k in last_psr.iter()):
-                    break
-                last_txt = _get_text(last_psr)
-                if not last_txt or last_txt == LS:
-                    new_content_psrs.pop()
-                else:
-                    break
-                    
-            if not seen_first_chapter:
-                # Chapter 1 is preceded by chap1_top_spacer (added at Block 5)
-                seen_first_chapter = True
-            else:
-                sub_spacer = ET.Element("ParagraphStyleRange", {
-                    "AppliedParagraphStyle": "ParagraphStyle/Normal",
-                    "StartParagraph": "NextPage",
-                    "ParagraphBreakType": "NextPage",
-                    "BlankPageSpacer": "true",
-                    "BlankPageProtected": "true",
-                })
-                csr_spacer = ET.SubElement(sub_spacer, "CharacterStyleRange", {
-                    "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]",
-                    "ParagraphBreakType": "NextPage"
-                })
-                cnt = ET.SubElement(csr_spacer, "Content")
-                cnt.text = LS
-                ET.SubElement(csr_spacer, "Br")
-                new_content_psrs.append(sub_spacer)
-                
-            new_content_psrs.append(c_p)
-            ci += 1
-        else:
-            new_content_psrs.append(c_p)
-            ci += 1
-            
-    content_psrs = new_content_psrs
-    return content_psrs
+        _format_chapter_heading(c_p)
+        if prev is not None and _is_paired_heading(prev, c_txt):
+            _drop_blank_psrs_after(out, prev)
+            _format_paired_heading(c_p)
+            out.append(c_p)
+            continue
+        _drop_trailing_spacers(out)
+        if seen_first_chapter:
+            out.append(_page_break_spacer())
+        seen_first_chapter = True
+        out.append(c_p)
+    return out
+
+
+FIRST_TOC_PAGE = 5
+FIRST_TOC_PAGE_LINES = 22       # first TOC page: 522 pt frame minus the heading (about 114 pt), at about 18 pt per line
+OTHER_TOC_PAGE_LINES = 29       # later TOC pages: the full 522 pt frame at about 18 pt per line
+CHARS_PER_TOC_LINE = 45.0
+
+
+def _toc_line_count(toc_psrs):
+    """Estimated TOC lines, counting only the visible Content text of the entries (the heading is skipped)."""
+    total = 0
+    for psr in toc_psrs[1:]:
+        text = "".join(c.text for c in psr.findall(".//Content") if c.text).strip()
+        for line in (l for l in re.split(r"[\r\n\u2028]+", text) if l.strip()):
+            total += max(1, int(math.ceil(len(line) / CHARS_PER_TOC_LINE)))
+    return total
+
+
+def _toc_page_count(line_count):
+    """Pages the estimated TOC lines fill: the first page is shorter because of the heading."""
+    if line_count <= FIRST_TOC_PAGE_LINES:
+        return 1
+    return 1 + int(math.ceil((line_count - FIRST_TOC_PAGE_LINES) / float(OTHER_TOC_PAGE_LINES)))
+
+
+def _estimate_first_content_page(toc_psrs):
+    """First-guess page where chapters start, from the TOC text length.
+
+    Only a first guess that pre-assigns the footer master in the XML; the real TOC length is decided by InDesign
+    (NextOddPage start paragraphs) and the real-layout pass in frontmatter_flow corrects the masters.
+    """
+    last_toc_page = FIRST_TOC_PAGE + _toc_page_count(_toc_line_count(toc_psrs)) - 1
+    return last_toc_page + 2 if last_toc_page % 2 == 1 else last_toc_page + 1
+
+
+def _spacer_psr(start_paragraph=None):
+    """A protected, empty spacer paragraph holding one line separator, optionally starting on a given page type."""
+    attrs = {"AppliedParagraphStyle": "ParagraphStyle/Normal"}
+    if start_paragraph:
+        attrs["StartParagraph"] = start_paragraph
+    attrs.update({"BlankPageSpacer": "true", "BlankPageProtected": "true"})
+    psr = ET.Element("ParagraphStyleRange", attrs)
+    csr = ET.SubElement(psr, "CharacterStyleRange", {"AppliedCharacterStyle": NO_CHARACTER_STYLE})
+    ET.SubElement(csr, "Content").text = LS
+    ET.SubElement(csr, "Br")
+    return psr
+
+
+def _strip_page_breaks(psr):
+    """Remove every forced page-break attribute from a paragraph and its character ranges."""
+    psr.attrib.pop("ParagraphBreakType", None)
+    psr.attrib.pop("StartParagraph", None)
+    _strip_csr_breaks(psr)
+
+
+def _keep_first_chapter_on_page(content_psrs):
+    """The leading chapter headings of the content start 'anywhere': the odd-page spacer before them owns the break."""
+    for p in content_psrs[:3]:
+        style = (p.attrib.get("AppliedParagraphStyle") or "").lower()
+        if "chapter" not in style and "heading" not in style:
+            break
+        p.set("StartParagraph", "Anywhere")
+        p.attrib.pop("ParagraphBreakType", None)
+        _strip_csr_breaks(p)
+
+
+def _format_front_heading(psr, space_after):
+    """Centre a front-matter heading (About the Author, Contents) in the heading style."""
+    psr.set("AppliedParagraphStyle", "ParagraphStyle/about_the_autherh")
+    psr.set("Justification", "CenterAlign")
+    psr.set("SpaceBefore", "44")
+    psr.set("SpaceAfter", space_after)
+    psr.set("Hyphenation", "false")
 
 
 def _assemble_frontmatter(root, story_elem, non_psrs, author_psrs, toc_psrs, content_psrs):
-    """Build the reordered front-matter (author, blanks, TOC, balancing spacers, content) and return (xml_bytes, first_content_page)."""
-    # For author and toc: remove ParagraphBreakType and StartParagraph
-    for block in [author_psrs, toc_psrs]:
-        for p in block:
-            if "ParagraphBreakType" in p.attrib:
-                del p.attrib["ParagraphBreakType"]
-            if "StartParagraph" in p.attrib:
-                del p.attrib["StartParagraph"]
-            for csr in p.findall("CharacterStyleRange"):
-                if "ParagraphBreakType" in csr.attrib:
-                    del csr.attrib["ParagraphBreakType"]
+    """Build the reordered front matter (author, TOC, content) and return (xml_bytes, first_content_page).
 
-    # For Chapter 1 (initial content heading): ensure StartParagraph="Anywhere" so it stays on Page 7
-    for p in content_psrs[:3]:
-        style = (p.attrib.get("AppliedParagraphStyle") or "").lower()
-        if "chapter" in style or "heading" in style:
-            p.set("StartParagraph", "Anywhere")
-            if "ParagraphBreakType" in p.attrib:
-                del p.attrib["ParagraphBreakType"]
-            for csr in p.findall("CharacterStyleRange"):
-                if "ParagraphBreakType" in csr.attrib:
-                    del csr.attrib["ParagraphBreakType"]
-        else:
-            break
-
-    # 1. Format ABOUT THE AUTHOR heading (Page 3)
-    author_heading = author_psrs[0]
-    author_heading.set("AppliedParagraphStyle", "ParagraphStyle/about_the_autherh")
-    author_heading.set("Justification", "CenterAlign")
-    author_heading.set("SpaceBefore", "44")
-    author_heading.set("SpaceAfter", "15")
-    author_heading.set("Hyphenation", "false")
-
-    author_top_spacer = ET.Element("ParagraphStyleRange", {
-        "AppliedParagraphStyle": "ParagraphStyle/Normal",
-        "BlankPageSpacer": "true",
-        "BlankPageProtected": "true",
-    })
-    csr_at = ET.SubElement(author_top_spacer, "CharacterStyleRange", {"AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]"})
-    cnt_at = ET.SubElement(csr_at, "Content")
-    cnt_at.text = LS
-    ET.SubElement(csr_at, "Br")
-
-    # 2. Blank page spacer after About the Author:
-    # Paragraph A: Page 3 (About Author) breaks to Page 4.
-    page3_break = ET.Element("ParagraphStyleRange", {
-        "AppliedParagraphStyle": "ParagraphStyle/Normal",
-        "BlankPageSpacer": "true",
-        "BlankPageProtected": "true",
-    })
-    csr_to_p4 = ET.SubElement(page3_break, "CharacterStyleRange", {
-        "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]",
-        "ParagraphBreakType": "NextPage"
-    })
-    ET.SubElement(csr_to_p4, "Br")
-
-    # Paragraph B: On Page 4, a blank spacer sits and breaks to Page 5.
-    page4_blank = ET.Element("ParagraphStyleRange", {
-        "AppliedParagraphStyle": "ParagraphStyle/Normal",
-        "BlankPageSpacer": "true",
-        "BlankPageProtected": "true",
-    })
-    csr_p4_cnt = ET.SubElement(page4_blank, "CharacterStyleRange", {
-        "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]",
-        "ParagraphBreakType": "NextPage"
-    })
-    cnt_p4 = ET.SubElement(csr_p4_cnt, "Content")
-    cnt_p4.text = LS
-    ET.SubElement(csr_p4_cnt, "Br")
-
-    # 3. Format TOC heading (Page 5)
-    toc_heading = toc_psrs[0]
-    toc_heading.set("AppliedParagraphStyle", "ParagraphStyle/about_the_autherh")
-    toc_heading.set("Justification", "CenterAlign")
-    toc_heading.set("SpaceBefore", "44")
-    toc_heading.set("SpaceAfter", "50")
-    toc_heading.set("Hyphenation", "false")
-
-    toc_top_spacer = ET.Element("ParagraphStyleRange", {
-        "AppliedParagraphStyle": "ParagraphStyle/Normal",
-        "BlankPageSpacer": "true",
-        "BlankPageProtected": "true",
-    })
-    csr_tt = ET.SubElement(toc_top_spacer, "CharacterStyleRange", {"AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]"})
-    cnt_tt = ET.SubElement(csr_tt, "Content")
-    cnt_tt.text = LS
-    ET.SubElement(csr_tt, "Br")
-
-    # 4. Count TOC items to calculate exact TOC pages (using only visible Content text)
-    toc_line_count = 0
-    for p in toc_psrs[1:]:
-        c_texts = [c.text for c in p.findall(".//Content") if c.text]
-        full_p_text = "".join(c_texts).strip()
-        if not full_p_text:
-            continue
-        lines = [l for l in re.split(r"[\r\n\u2028]+", full_p_text) if l.strip()]
-        for line in lines:
-            toc_line_count += max(1, int(math.ceil(len(line) / 45.0)))
-        
-    # Page 5 vertical budget:
-    # Text frame height = 522 pt.
-    # TOC Heading: SpaceBefore=44, SpaceAfter=50, fontSize~20 -> ~114 pt.
-    # Remaining vertical space on Page 5 = 408 pt.
-    # Each TOC item line height + SpaceAfter=5 -> ~18 pt.
-    # Page 5 capacity: 408 / 18 = 22.6 lines -> at most 22 lines.
-    # Pages 6+: Full text frame without heading: 522 / 18 = 29 lines per page.
-    if toc_line_count <= 22:
-        toc_pages = 1
-    elif toc_line_count <= (22 + 29):   # <= 51 lines
-        toc_pages = 2
-    elif toc_line_count <= (22 + 29 + 29): # <= 80 lines
-        toc_pages = 3
-    else:
-        toc_pages = 1 + int(math.ceil((toc_line_count - 22) / 29.0))
-        
-    last_toc_page = 5 + toc_pages - 1
-
-    # 5. Post-TOC balancing:
-    post_toc_elements = []
-    if last_toc_page % 2 == 1:
-        # TOC ends on odd page (e.g. 1-page TOC on Page 5, or 3-page TOC on Page 7).
-        # We leave the next even page blank so content starts on an ODD page (Page 7 or Page 9, Recto)!
-        first_content_page = last_toc_page + 2
-        
-        # Paragraph 1: breaks from TOC page to even blank page (e.g. Page 5 to Page 6)
-        toc_end_break = ET.Element("ParagraphStyleRange", {
-            "AppliedParagraphStyle": "ParagraphStyle/Normal",
-            "BlankPageSpacer": "true",
-            "BlankPageProtected": "true",
-        })
-        csr_to_even = ET.SubElement(toc_end_break, "CharacterStyleRange", {
-            "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]",
-            "ParagraphBreakType": "NextPage"
-        })
-        ET.SubElement(csr_to_even, "Br")
-        post_toc_elements.append(toc_end_break)
-
-        # Paragraph 2: sits on even page (Page 6) and breaks to next odd page (Page 7)
-        blank_even_psr = ET.Element("ParagraphStyleRange", {
-            "AppliedParagraphStyle": "ParagraphStyle/Normal",
-            "BlankPageSpacer": "true",
-            "BlankPageProtected": "true",
-        })
-        csr_blank_cnt = ET.SubElement(blank_even_psr, "CharacterStyleRange", {
-            "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]",
-            "ParagraphBreakType": "NextPage"
-        })
-        cnt_b = ET.SubElement(csr_blank_cnt, "Content")
-        cnt_b.text = LS
-        ET.SubElement(csr_blank_cnt, "Br")
-        post_toc_elements.append(blank_even_psr)
-    else:
-        # TOC ends on even page (e.g. 2-page TOC on Page 6).
-        # It already matches odd number criteria for content: DO NOT leave blank page!
-        # Content starts directly on the next page (Page 7, Recto, Odd)!
-        first_content_page = last_toc_page + 1
-        
-        toc_end_break = ET.Element("ParagraphStyleRange", {
-            "AppliedParagraphStyle": "ParagraphStyle/Normal",
-            "BlankPageSpacer": "true",
-            "BlankPageProtected": "true",
-        })
-        csr_to_odd = ET.SubElement(toc_end_break, "CharacterStyleRange", {
-            "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]",
-            "ParagraphBreakType": "NextPage"
-        })
-        ET.SubElement(csr_to_odd, "Br")
-        post_toc_elements.append(toc_end_break)
-
-    # 6. Chapter 1 top spacer on first content page (WITHOUT NextPage break)
-    chap1_top_spacer = ET.Element("ParagraphStyleRange", {
-        "AppliedParagraphStyle": "ParagraphStyle/Normal",
-        "BlankPageSpacer": "true",
-        "BlankPageProtected": "true",
-    })
-    csr_c1 = ET.SubElement(chap1_top_spacer, "CharacterStyleRange", {"AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]"})
-    cnt_c1 = ET.SubElement(csr_c1, "Content")
-    cnt_c1.text = LS
-    ET.SubElement(csr_c1, "Br")
-
-    # 7. Rebuild the story elements in order
-    new_story_elements = []
-    new_story_elements.extend(non_psrs)
-    
-    # Block 1: About the Author (Page 3)
-    new_story_elements.append(author_top_spacer)
-    new_story_elements.extend(author_psrs)
-    
-    # Block 2: Blank Page 4
-    new_story_elements.append(page3_break)
-    new_story_elements.append(page4_blank)
-    
-    # Block 3: TOC (Page 5..)
-    new_story_elements.append(toc_top_spacer)
-    new_story_elements.extend(toc_psrs)
-    
-    # Block 4: Post-TOC spacer (balances blank pages to next Recto)
-    new_story_elements.extend(post_toc_elements)
-
-    # Block 5: Chapter 1 Top Spacer
-    new_story_elements.append(chap1_top_spacer)
-    
-    # Block 6: Main Content (Chapter 1 onwards)
-    new_story_elements.extend(content_psrs)
-    
-    for c in list(story_elem):
-        story_elem.remove(c)
-    for c in new_story_elements:
-        story_elem.append(c)
-        
-    return ET.tostring(root, encoding="utf-8"), first_content_page
+    Page flow is decided by InDesign from the real layout: the TOC and the first content page start on the next odd page.
+    """
+    for p in author_psrs + toc_psrs:
+        _strip_page_breaks(p)
+    _keep_first_chapter_on_page(content_psrs)
+    if author_psrs:
+        _format_front_heading(author_psrs[0], "15")
+    _format_front_heading(toc_psrs[0], "50")
+    ordered = (non_psrs + [_spacer_psr()] + author_psrs + [_spacer_psr("NextOddPage")] + toc_psrs
+               + [_spacer_psr("NextOddPage")] + content_psrs)
+    for child in list(story_elem):
+        story_elem.remove(child)
+    story_elem.extend(ordered)
+    return ET.tostring(root, encoding="utf-8"), _estimate_first_content_page(toc_psrs)
 
 
 def resequence_frontmatter_story(story_xml_bytes: bytes) -> tuple[bytes, int]:
     """
     Resequences front matter blocks inside the main continuous story to match reference book layout:
       - Block 1: ABOUT THE AUTHOR (lands on Page 3, Recto, Master None)
-      - Block 2: Blank Page 4 spacer (Verso, Master None)
-      - Block 3: TABLE OF CONTENTS (lands on Page 5, Recto, Master None)
-      - Block 4: Post-TOC balancing spacer (balances blank pages so content starts on Recto)
-      - Block 5: Chapter 1 Top Spacer
-      - Block 6: Main Content (Chapter 1 onwards, Master A-Master)
+      - Block 2: TABLE OF CONTENTS (NextOddPage: lands on Page 5, Recto; blank Page 4 is automatic)
+      - Block 3: Chapter 1 Top Spacer (NextOddPage: first content page is always odd, wherever the TOC ends)
+      - Block 4: Main Content (Chapter 1 onwards, Master A-Master)
 
     Returns:
       (resequenced_xml_bytes, first_content_page)

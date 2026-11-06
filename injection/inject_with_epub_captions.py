@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import time
 import shutil
 from datetime import datetime
 
@@ -27,9 +28,13 @@ from injection_helpers import (
     restart_indesign,
     prepare_image,
     source_sidebyside_pairs,
+    pin_document,
+    unpin_document,
 )
 
 MAX_RETRIES_PER_DOC = 3
+PLACEMENT_ATTEMPTS = 3          # tries per image before it counts as failed (transient InDesign hiccups)
+PLACEMENT_RETRY_DELAY_S = 0.5
 
 
 class EpubInjector:
@@ -153,10 +158,25 @@ class EpubInjector:
         """Open the IDML in InDesign and return its page count before injection."""
         clean_idml_path = idml_path.replace(chr(92), "/")
         self.app.DoScript(js.open_doc_js(clean_idml_path), JS_LANG)
+        self.app = pin_document(self.app)   # later scripts run on THIS document even if another one is activated
         try:
             return int(self.app.DoScript(js.page_count_js(), JS_LANG))
         except Exception:
             return 0
+
+    def _place_with_retry(self, js_name, clean_img_path):
+        """Place one image, retrying transient failures; return (placed, reason_when_not_placed)."""
+        reason = ""
+        for _attempt in range(PLACEMENT_ATTEMPTS):
+            try:
+                res = self.app.DoScript(js.place_image_js(js_name, clean_img_path), JS_LANG)
+                if res == "true":
+                    return True, ""
+                reason = f"JS: {res[4:]}" if isinstance(res, str) and res.startswith("err:") else "Placeholder Not Found"
+            except Exception as e:
+                reason = f"Py Error: {str(e).strip()}"
+            time.sleep(PLACEMENT_RETRY_DELAY_S)
+        return False, reason
 
     def _inject_images(self, clean_base, current_image_folder, doc_temp_dir):
         """Place each image into its '###Insert ... here###' placeholder; return the failed-image count."""
@@ -206,19 +226,12 @@ class EpubInjector:
                 final_img_path = prepare_image(img_path, doc_temp_dir)
                 js_name = img_name.replace('\\', '\\\\').replace('"', '\\"')
                 clean_img_path = final_img_path.replace(chr(92), "/")
-                try:
-                    res = self.app.DoScript(js.place_image_js(js_name, clean_img_path), JS_LANG)
-                    if res == "true":
-                        success_count += 1
-                    elif isinstance(res, str) and res.startswith("err:"):
-                        fail_count += 1
-                        failed_images.append(f"{img_name} (JS: {res[4:]})")
-                    else:
-                        fail_count += 1
-                        failed_images.append(f"{img_name} (Placeholder Not Found)")
-                except Exception as e:
+                placed, reason = self._place_with_retry(js_name, clean_img_path)
+                if placed:
+                    success_count += 1
+                else:
                     fail_count += 1
-                    failed_images.append(f"{img_name} (Py Error: {str(e).strip()})")
+                    failed_images.append(f"{img_name} ({reason})")
             else:
                 fail_count += 1
                 failed_images.append(f"{img_name} (File Not Found in '{current_image_folder}')")
@@ -338,8 +351,16 @@ class EpubInjector:
             print(f"Error resolving overset: {e_over_outer}")
             self._log(f"Error resolving overset: {e_over_outer}")
 
-    def _finalize_layout(self, input_pages):
+    def _finalize_layout(self, input_pages, clean_base=""):
         """Fit tables and images, centre graphics, inject the logo, and sync the TOC after reflow."""
+        try:
+            import paragraph_styles_format
+            epub_file = os.path.join(self.epub_input_dir, f"{clean_base}.epub")
+            ps_res = paragraph_styles_format.run(self.app, epub_file)
+            print(f"Paragraph alignment & soft-break styles: {ps_res}")
+            self._log(f"Paragraph styles: {ps_res}")
+        except Exception as e_ps:
+            self._log(f"Paragraph style pass note: {e_ps}")
         try:
             tbl_res = fix_table_fit.fix_tables_in_doc(self.app)
             print(f"Tables fixed: {tbl_res}")
@@ -397,16 +418,39 @@ class EpubInjector:
             self._log(f"Logo injection pass skipped: {e_logo}")
 
         try:
+            repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            for p in (repo_dir, os.path.join(repo_dir, "book_workflow"), os.path.join(repo_dir, "book_workflow", "core")):
+                if p not in sys.path:
+                    sys.path.insert(0, p)
             try:
                 from book_workflow.core.toc_synchronizer import sync_toc_via_indesign
             except ImportError:
-                from core.toc_synchronizer import sync_toc_via_indesign
+                from toc_synchronizer import sync_toc_via_indesign
             toc_sync_count = sync_toc_via_indesign(self.app)
             print(f"Live InDesign TOC Sync: {toc_sync_count} entry(ies) synchronized with layout")
             self._log(f"TOC sync: {toc_sync_count} entries synchronized")
         except Exception as e_toc:
             print(f"TOC sync pass skipped: {e_toc}")
             self._log(f"TOC sync pass skipped: {e_toc}")
+
+        try:
+            # Real-layout front matter: chapters on an odd page, footer master from the real first content page.
+            from book_workflow.core.frontmatter_flow import apply_frontmatter_flow, layout_changed
+            ff_report = apply_frontmatter_flow(self.app)
+            print(f"Front-matter flow: {ff_report}")
+            self._log(f"Front-matter flow: {ff_report}")
+            if layout_changed(ff_report):
+                self.app.DoScript(js.resolve_overset_js(), JS_LANG)   # content moved a page: re-resolve overset
+        except Exception as e_ff:
+            print(f"Front-matter flow pass skipped: {e_ff}")
+            self._log(f"Front-matter flow pass skipped: {e_ff}")
+
+        try:
+            v_res = self.app.DoScript(js.sanitize_vertical_justification_js(), JS_LANG)
+            print(f"Vertical bottom-align: {v_res}")
+            self._log(f"Vertical bottom-align: {v_res}")
+        except Exception as e_v:
+            self._log(f"Vertical bottom-align note: {e_v}")
 
     def _export(self, output_idml, fail_count):
         """Export the injected IDML, routing to the rejection folder when images were missing."""
@@ -456,8 +500,9 @@ class EpubInjector:
         self._run_caption_passes(caption_map, caption_styles)
         self._run_layout_passes()
         self._resolve_overset(base_name, filename)
-        self._finalize_layout(input_pages)
+        self._finalize_layout(input_pages, clean_base)
         self._export(output_idml, fail_count)
+        self.app = unpin_document(self.app)
         return True
 
     def _handle_doc_error(self, filename, retry_counts, exc):

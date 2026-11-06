@@ -64,10 +64,20 @@ def process_story(story_xml_content: bytes) -> tuple[bytes, bool, int]:
             
         psr = child
         txt = _get_text(psr)
-        prev_psr = new_children[-1] if (new_children and _lname(new_children[-1].tag) == "ParagraphStyleRange") else None
+        prev_real_psr = None
+        for cand in reversed(new_children):
+            if _lname(cand.tag) == "ParagraphStyleRange":
+                if any(_lname(k.tag) in ("Rectangle", "Polygon", "Oval", "Image", "Table") for k in cand.iter()):
+                    prev_real_psr = cand
+                    break
+                cand_txt = _get_text(cand)
+                if cand_txt and cand_txt != LS:
+                    prev_real_psr = cand
+                    break
+        prev_psr = prev_real_psr
         
         if is_chapter_heading(psr, prev_psr):
-            # Check if this heading immediately follows another heading (e.g. PART I followed by CHAPTER I)
+            # Check if this heading immediately follows another heading (e.g. PART I followed by CHAPTER I, or H1 + H1)
             is_sub_heading_of_part = False
             if prev_psr is not None:
                 prev_txt = _get_text(prev_psr)
@@ -75,8 +85,9 @@ def process_story(story_xml_content: bytes) -> tuple[bytes, bool, int]:
                 if (
                     "chapter_name" in prev_st
                     or "sub-heading" in prev_st
-                    or any(k in prev_st for k in ["heading", "title", "part"])
-                    or re.match(r"^\s*(?:PART|PARTE|BOOK|LIBRO)\b", prev_txt, re.I)
+                    or any(k in prev_st for k in ["heading", "title", "part", "after_chapter"])
+                    or re.match(r"^\s*(?:PART|PARTE|BOOK|LIBRO|[IVXLCDM0-9]+)\b", prev_txt, re.I)
+                    or re.match(r"^\s*(?:PART|PARTE|BOOK|LIBRO|[IVXLCDM0-9]+)\b", txt, re.I)
                 ):
                     is_sub_heading_of_part = True
                     
@@ -101,6 +112,17 @@ def process_story(story_xml_content: bytes) -> tuple[bytes, bool, int]:
                     ET.SubElement(last_csr, "Br")
                     
             if is_sub_heading_of_part:
+                # Remove intervening empty spacers so paired headings remain on the SAME page
+                while new_children and new_children[-1] is not prev_real_psr:
+                    cand = new_children[-1]
+                    if _lname(cand.tag) == "ParagraphStyleRange":
+                        cand_txt = _get_text(cand).replace(LS, "").strip()
+                        if not cand_txt and not any(_lname(k.tag) in ("Rectangle", "Polygon", "Oval", "Image", "Table") for k in cand.iter()):
+                            new_children.pop()
+                        else:
+                            break
+                    else:
+                        break
                 psr.set("AppliedParagraphStyle", "ParagraphStyle/after_chapter_name_heading")
                 psr.set("StartParagraph", "Anywhere")
                 if "ParagraphBreakType" in psr.attrib:
@@ -254,7 +276,7 @@ def apply_chapter_top_spacing(
         for fname in sorted(files.keys()):
             if fname.startswith("Stories/Story_"):
                 txt = files[fname].decode("utf-8", errors="ignore").lower()
-                if ("contents" in txt or "contenido" in txt) and ("about the author" in txt or "sobre la autor" in txt):
+                if ("contents" in txt or "contenido" in txt) or ("about the author" in txt or "sobre la autor" in txt):
                     files[fname], first_content_page = resequence_frontmatter_story(files[fname])
                     resequenced_fname = fname
                     break

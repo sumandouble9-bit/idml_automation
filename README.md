@@ -126,8 +126,12 @@ The codebase enforces clean **Object-Oriented Programming (OOP)** patterns with 
   - **Page 3 (Recto)**: About the Author / *Sobre la autoría* (Master: *None*)
   - **Page 4 (Verso)**: Blank separator page (Master: *None*)
   - **Page 5+ (Recto)**: Table of Contents / *Contenido* (Master: *None*)
-  - **Post-TOC Balancing**: Dynamically balances trailing blank pages to guarantee that main body content (Chapter 1) begins strictly on an **ODD (Recto, Page 7)** page.
-- **Master Spread Isolation**: Frontmatter (Pages 1–6) is isolated from running headers and footers (`AppliedMaster="n"`). Body content beginning on Page 7 is linked to `A-Master`.
+  - **Post-TOC Balancing (dynamic)**: Chapters (and any text after the TOC) always begin on an **ODD (Recto)** page, wherever the TOC really ends. The start page comes from the real layout, not a fixed number:
+    - TOC on 1 page (5) → blank page 6 → chapters from **7**
+    - TOC on 2 pages (5–6) → no blank → chapters from **7**
+    - TOC on 3 pages (5–7) → blank page 8 → chapters from **9**
+    - TOC on 4 pages (5–8) → no blank → chapters from **9**, and so on.
+- **Master Spread Isolation (dynamic)**: Frontmatter (every page before the first chapter page) has no running header/footer (`AppliedMaster="n"`). The running footer (page number + title, `A-Master`) starts exactly on the real first chapter page, so it follows the TOC length automatically.
 - **Rigid Chapter Top Spacing**: All chapters start with a uniform **14.5 pt top gap** (`y0 = 86.04 pt`), eliminating heading displacement.
 - **Zero Footer Collisions (`maxB = 558 pt`)**: All body text frames are strictly capped above the running footer margin (`maxB = 558 pt`), preventing overlapping text.
 - **Zero Dropped Paragraphs (Threaded Page Extension)**: If terminal text frames overflow, the pipeline dynamically appends new pages with `A-Master` and threads the story cleanly to completion.
@@ -272,7 +276,11 @@ Analyzes page balance across all body pages:
 ### Stage 3c: Chapter Top Spacing & Frontmatter Sequencing
 **Module:** `book_workflow/core/chapter_top_spacing.py`
 
-- Rebuilds frontmatter sequence: Page 1 (Title), Page 2 (Copyright), Page 3 (About Author), Page 4 (Blank), Page 5 (TOC), Post-TOC balancing to guarantee Chapter 1 begins on an **ODD (Recto, Page 7)** page.
+- Rebuilds frontmatter sequence: Page 1 (Title), Page 2 (Copyright), Page 3 (About Author), Page 4 (Blank), Page 5 (TOC), then chapters on the next **ODD (Recto)** page.
+- **No page-count estimate decides the layout.** The TOC spacer and the chapter-1 spacer carry `StartParagraph = "NextOddPage"`, so InDesign itself leaves the blank page (or none) according to how many pages the TOC really takes. The TOC text-length estimate is only a first guess for the footer master.
+- **Real-layout pass (`book_workflow/core/frontmatter_flow.py`)** runs inside InDesign on the final composed document (end of injection and again before the PDF export): it finds the TOC and the first content paragraph from the actual layout, keeps the first content on its spacer's odd page, forces the TOC / first content onto an odd page if an earlier step left either on an even page, and gives pages before the first content page no master and every page from it on the body master (footer).
+- The overset resolvers treat an empty **even** page before a `NextOddPage` paragraph as an intentional blank page, not a jam.
+- PDF TOC sync (`toc_synchronizer.detect_toc_pages`) detects TOC pages of **any length** (dot leaders, trailing page numbers, or numbered lists) instead of a fixed page window.
 - Inserts a top spacer paragraph with `SpaceBefore = 14.5 pt` so every chapter heading begins at exactly `y0 = 86.04 pt`.
 - **Idempotent Page Breaks:** Spacer uses `StartParagraph = "NextPage"` on the `ParagraphStyleRange` rather than character-level breaks.
 
@@ -385,7 +393,8 @@ idml_automation/
 │   │   ├── typography_postprocessor.py      # Typography standardization & soft-break fixes
 │   │   ├── chapter_heading_fix.py           # 2-line heading splitting (fixed year matching)
 │   │   ├── chapter_top_spacing.py           # 14.5pt top gap & frontmatter sequencer
-│   │   ├── toc_synchronizer.py              # PDF-to-IDML TOC page number synchronizer
+│   │   ├── frontmatter_flow.py              # Real-layout front-matter pass (odd-page chapters, footer from first chapter page)
+│   │   ├── toc_synchronizer.py              # PDF-to-IDML TOC page number synchronizer (dynamic TOC page detection)
 │   │   └── ... (all publishing core modules)
 │   │
 │   ├── config/                              # Language and pipeline configuration

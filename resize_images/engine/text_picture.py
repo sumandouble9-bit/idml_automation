@@ -1,5 +1,3 @@
-"""Detect whether an image is a picture of text (light background with even dark text bands)."""
-
 try:
     from PIL import Image
     _HAS_PIL = True

@@ -98,8 +98,15 @@ def is_chapter_heading(psr: ET.Element, prev_psr: ET.Element = None) -> bool:
 
 
 def is_empty_psr(psr) -> bool:
-    """Check if a ParagraphStyleRange contains only whitespace, BOM, or line separators."""
-    txt = "".join(psr.itertext())
+    """Check if a ParagraphStyleRange has no visible content.
+
+    Only the Content text counts (itertext() would also pick up font names stored in Properties, so a BOM-only line
+    carrying a font could never look empty), and a paragraph holding an anchored object is never empty.
+    """
+    if any(_lname(e.tag) in ("Rectangle", "Polygon", "Oval", "Image", "Table", "TextFrame", "GraphicLine", "Group")
+           for e in psr.iter()):
+        return False
+    txt = "".join(c.text or "" for c in psr.iter() if _lname(c.tag) == "Content")
     cleaned = re.sub(r"[\s\ufeff\u2028\u00a0\r\n]+", "", txt)
     return len(cleaned) == 0
 

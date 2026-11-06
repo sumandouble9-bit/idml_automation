@@ -1,5 +1,3 @@
-"""Page/frame geometry and algorithm constants (5.5 x 8.5 in trim, body column)."""
-
 PAGE_W_PT = 396.0
 PAGE_H_PT = 612.0
 MARGIN_TOP_PT = 36.0

@@ -1,5 +1,3 @@
-"""STEP 1: compute the allowed size range of each EPUB image (its largest size and how far it may shrink)."""
-
 import os
 from math import sqrt
 

@@ -180,9 +180,10 @@ def _fix_tables_and_breakable_js():
                 }
                 st.recompose(); checkpoint(tb, best);
 
+                var isSmallTable = (tb.columns.length <= 2);
                 for (var pass=0; pass<400; pass++){
                     var need = needyCols(tb); if (need.length === 0) break;
-                    var slack = usable - tblWidth(tb);
+                    var slack = isSmallTable ? 0 : (usable - tblWidth(tb));
                     var give;
                     if (slack > 0.5){
                         give = Math.min(6, slack);
@@ -208,7 +209,7 @@ def _fix_tables_and_breakable_js():
                     st.recompose(); checkpoint(tb, best);
                     for (var pass2=0; pass2<400; pass2++){
                         var need2 = needyCols(tb); if (need2.length === 0) break;
-                        var slack2 = usable - tblWidth(tb);
+                        var slack2 = isSmallTable ? 0 : (usable - tblWidth(tb));
                         var give2;
                         if (slack2 > 0.5){ give2 = Math.min(6, slack2); }
                         else {
@@ -552,6 +553,8 @@ def _center_narrow_tables_js():
                 }
 
                 try { tpara.firstLineIndent = 0; } catch (eF) {}
+                try { tpara.rightIndent = 0; } catch (eR) {}
+                try { tpara.justification = Justification.LEFT_ALIGN; } catch (eJ) {}
                 if (leftover > 4) {
                     try { tpara.leftIndent = leftover / 2; centered++; } catch (eI) {}
                 } else {

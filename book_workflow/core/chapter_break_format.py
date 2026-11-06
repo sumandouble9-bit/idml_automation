@@ -128,7 +128,14 @@ def format_stories(root):
             if _ln(prev_elem.tag) == "ParagraphStyleRange":
                 p_st = (prev_elem.attrib.get("AppliedParagraphStyle", "") or "").lower()
                 p_tx = "".join(prev_elem.itertext()).strip()
-                if "chapter_name" in p_st or "sub-heading" in p_st or "after_chapter" in p_st:
+                if (
+                    "chapter_name" in p_st
+                    or "sub-heading" in p_st
+                    or "after_chapter" in p_st
+                    or any(k in p_st for k in ["heading", "title", "part"])
+                    or re.match(r"^\s*(?:PART|PARTE|BOOK|LIBRO|[IVXLCDM0-9]+)\b", p_tx, re.I)
+                    or re.match(r"^\s*(?:PART|PARTE|BOOK|LIBRO|[IVXLCDM0-9]+)\b", "".join(psr.itertext()).strip(), re.I)
+                ):
                     is_paired = True
                     break
                 elif p_tx:
@@ -136,6 +143,19 @@ def format_stories(root):
             prev_idx -= 1
 
         if is_paired:
+            # Remove any trailing break on the preceding heading
+            if _strip_trailing_break(kids[prev_idx]):
+                changed = True
+            # Clear breaks on any intervening empty elements
+            for k in range(prev_idx + 1, idx):
+                kid = kids[k]
+                if _ln(kid.tag) == "ParagraphStyleRange":
+                    if not "".join(kid.itertext()).replace("\ufeff", "").replace("\u2028", "").strip():
+                        if "StartParagraph" in kid.attrib and kid.attrib["StartParagraph"] != "Anywhere":
+                            kid.set("StartParagraph", "Anywhere")
+                            changed = True
+                        if _strip_trailing_break(kid):
+                            changed = True
             # Second heading in a paired heading: stays on the SAME PAGE directly below
             if psr.attrib.get("AppliedParagraphStyle") != "ParagraphStyle/after_chapter_name_heading":
                 psr.set("AppliedParagraphStyle", "ParagraphStyle/after_chapter_name_heading")
@@ -210,7 +230,8 @@ def format_stories(root):
             # One break-before on the spacer moves the chapter to a fresh page; the heading
             # and its body then flow together, so no trailing page breaks are kept on either.
             if i == 0:
-                if prev_child.attrib.get("StartParagraph") not in (None, "Anywhere"):
+                # NextOddPage is the front-matter flow (first content page is always odd): never reset it.
+                if prev_child.attrib.get("StartParagraph") not in (None, "Anywhere", "NextOddPage"):
                     prev_child.set("StartParagraph", "Anywhere")
                     changed = True
             else:

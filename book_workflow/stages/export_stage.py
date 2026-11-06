@@ -29,16 +29,42 @@ class QualityAuditAndExportStage(WorkflowStage):
         if not epub.exists():
             return {}
         try:
-            from ..core import epub_tools
+            inj_dir = str(self.paths.injection_dir)
+            if inj_dir not in sys.path:
+                sys.path.insert(0, inj_dir)
+            import epub_tools
             return epub_tools.build_caption_map(str(epub))
         except Exception:
-            try:
-                import epub_tools
-                return epub_tools.build_caption_map(str(epub))
-            except Exception:
-                return {}
+            return {}
+
+    def _dedup_idml_captions(self, doc: Path):
+        try:
+            import xml.etree.ElementTree as ET
+            from ..core.caption_dedup import dedup_captions
+            with zipfile.ZipFile(str(doc), "r") as zin:
+                names = zin.namelist()
+                data = {n: zin.read(n) for n in names}
+            modified = False
+            for n in names:
+                if n.startswith("Stories/") and n.endswith(".xml"):
+                    try:
+                        sroot = ET.fromstring(data[n])
+                        if dedup_captions(sroot):
+                            data[n] = ET.tostring(sroot, encoding="utf-8", xml_declaration=True)
+                            modified = True
+                    except Exception:
+                        pass
+            if modified:
+                tmp = doc.with_suffix(".capdup.tmp")
+                with zipfile.ZipFile(str(tmp), "w", zipfile.ZIP_DEFLATED) as zout:
+                    for n in names:
+                        zout.writestr(n, data[n])
+                shutil.move(str(tmp), str(doc))
+        except Exception:
+            pass
 
     def _audit(self, doc: Path, isbn: str, caption_map: dict):
+        self._dedup_idml_captions(doc)
         reasons = []
         source = self.paths.input_dir / f"{isbn}.idml"
         if not (source.exists() and "_injected" in doc.name):
