@@ -156,6 +156,45 @@ def unpack_multichild_csrs(psr):
     return changed
 
 
+ENTRY_MARKER_START = re.compile(r"^\s*\[\d{1,4}[a-z]?\]")
+
+
+def _ends_line(csr):
+    """True when the run finishes with a line break, so the next run starts a new footnote entry."""
+    kids = list(csr)
+    return bool(kids) and lname(kids[-1].tag) == "Br"
+
+
+def _plain_marker(csr):
+    """Strip superscript/subscript position and character style from a run; return True when it changed."""
+    changed = csr.attrib.pop("Position", None) is not None
+    style = csr.attrib.get("AppliedCharacterStyle", "").lower()
+    if style.endswith("superscript") or style.endswith("subscript"):
+        csr.set("AppliedCharacterStyle", "CharacterStyle/$ID/[No character style]")
+        changed = True
+    return changed
+
+
+def unsuperscript_entry_marker(psr):
+    """Make every footnote entry's leading [n] marker plain text (not superscript); return changed.
+
+    One paragraph can hold many entries separated by line breaks, so each run that starts a line is checked.
+    """
+    changed = False
+    at_line_start = True
+    for csr in psr:
+        if lname(csr.tag) != "CharacterStyleRange":
+            continue
+        text = "".join(e.text or "" for e in csr.iter() if lname(e.tag) == "Content")
+        if text.strip():
+            if at_line_start and ENTRY_MARKER_START.match(text) and _plain_marker(csr):
+                changed = True
+            at_line_start = False
+        if _ends_line(csr):
+            at_line_start = True
+    return changed
+
+
 def merge_and_split_ref_markers(psr, in_footnotes, is_fn_style, stats):
     """Merge bracket-split footnote markers, then split markers into their own superscript CSRs; return changed."""
     changed = False

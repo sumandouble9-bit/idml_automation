@@ -729,13 +729,17 @@ def sanitize_vertical_justification_js():
         var doc = app.activeDocument;
         var J = VerticalJustification;
         var fixed = 0;
+        function onMasterSpread(frame){
+            try { var p = frame.parentPage; return !!p && !!p.parent && p.parent.constructor.name === "MasterSpread"; }
+            catch (eM) { return false; }
+        }
         for (var s = 0; s < doc.stories.length; s++){
             var st = doc.stories[s];
             for (var f = 0; f < st.textContainers.length; f++){
                 var tf = st.textContainers[f];
                 if (tf.constructor.name !== "TextFrame") continue;
                 var pg = tf.parentPage;
-                if (!pg) continue;
+                if (!pg || onMasterSpread(tf)) continue;
                 var tfp = tf.textFramePreferences;
                 var hasImg = false;
                 try { hasImg = (tf.allGraphics.length > 0); } catch(eG){}

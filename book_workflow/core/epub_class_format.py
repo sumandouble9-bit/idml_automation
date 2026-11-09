@@ -10,6 +10,9 @@ _SKIP_STYLES = ("toc", "index", "chapter", "head", "title", "author",
 _BLOCK_TAGS = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "blockquote", "li")
 
 
+_FOOTNOTE_ENTRY = re.compile(r"^\s*\[\d{1,4}[a-z]?\]")
+
+
 def _lname(tag):
     return tag.rsplit("}", 1)[-1]
 # local tag name without the XML namespace.
@@ -84,16 +87,53 @@ def build_class_format(epub_path):
 # builds norm_key -> {align, li, ri} for every EPUB block carrying alignment/indent CSS.
 
 
+_NOTES_HEADING = re.compile(r"^\s*(FOOT-?NOTES?|END-?NOTES?|NOTES?)\s*$", re.I)
+
+
+def _is_notes_heading(psr):
+    """True when the paragraph is the FOOTNOTES / NOTES heading that opens the notes section."""
+    text = "".join(c.text or "" for c in psr.iter() if _lname(c.tag) == "Content")
+    return bool(_NOTES_HEADING.match(text))
+
+
+def _reset_note_indents(psr):
+    """Remove the block indents from a notes-section paragraph the EPUB sets as plain text; True when changed."""
+    changed = False
+    for attr in ("LeftIndent", "RightIndent", "FirstLineIndent"):
+        if psr.attrib.get(attr) not in (None, "0"):
+            psr.set(attr, "0")
+            changed = True
+    return changed
+
+
+def _next_notes_state(psr, in_notes):
+    """Whether the notes section is open after this paragraph: opened by its heading, closed by the next chapter heading."""
+    if _is_notes_heading(psr):
+        return True
+    style = psr.attrib.get("AppliedParagraphStyle", "").lower()
+    return in_notes and not any(k in style for k in ("chapter_name", "chapter-name"))
+
+
+def _is_note_continuation(style_lower, txt):
+    """True for a quote-styled notes-section paragraph that is not a numbered [n] entry (a verse line or continuation)."""
+    return "quote" in style_lower and not _FOOTNOTE_ENTRY.match(txt)
+
+
 def apply_class_format(story_root, key_fmt):
     changed = False
+    in_notes = False
     for psr in story_root.iter():
         if _lname(psr.tag) != "ParagraphStyleRange":
             continue
+        in_notes = _next_notes_state(psr, in_notes)
         sl = psr.attrib.get("AppliedParagraphStyle", "").lower()
         if any(k in sl for k in _SKIP_STYLES):
             continue
         txt = "".join(c.text or "" for c in psr.iter() if _lname(c.tag) == "Content")
         if not txt.strip():
+            continue
+        if in_notes and _is_note_continuation(sl, txt):
+            changed = _reset_note_indents(psr) or changed
             continue
         fmt = key_fmt.get(_norm_key(txt))
         if not fmt:
@@ -112,6 +152,8 @@ def apply_class_format(story_root, key_fmt):
             psr.set("Justification", "RightAlign")
             changed = True
         _is_block = any(k in sl for k in ("quote", "block", "epigraph", "verse", "poem", "extract"))
+        if _FOOTNOTE_ENTRY.match(txt):
+            continue
         if _is_block:
             if "li" in fmt and psr.attrib.get("LeftIndent") != str(fmt["li"]):
                 psr.set("LeftIndent", str(fmt["li"]))

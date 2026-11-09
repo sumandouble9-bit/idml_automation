@@ -9,7 +9,7 @@ from .document_setup.document_setup_page import DocumentSetupPage
 from .table_of_contents.table_of_contents_page import TableOfContentsPage
 from .title.title_page import TitlePage
 from .typography.typography_formatter import TypographyFormatter
-from ..core import font_manager, epub_style_enricher, typography_postprocessor
+from ..core import font_manager, epub_style_enricher, epub_script_positions, typography_postprocessor
 from ..core.idml_utils import unzip, validate_zip, zipdir
 
 
@@ -60,6 +60,8 @@ class BookFormatter:
             # Flatten footnote-reference hyperlinks before any typography pass so the
             # superscript markers survive paragraph rebuilds (see epub_style_enricher).
             epub_style_enricher.unwrap_hyperlinks_in_extracted(work_dir)
+            report["stages"]["clear_false_scripts"] = epub_script_positions.clear_extracted(
+                work_dir, epub_style_enricher.find_matching_epub(target.stem))
 
             print("  [0/6] Dynamically resolving, downloading, and bundling all document font families...")
             report["stages"]["font_manager"] = font_manager.resolve_idml_fonts_and_fallbacks(

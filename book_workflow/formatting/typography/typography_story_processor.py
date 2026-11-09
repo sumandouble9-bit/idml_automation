@@ -207,6 +207,8 @@ class _StoryProcessor:
             self.changed = True
         if char_ops.apply_char_styles(psr, self.epub_fmt, self.lower_italics, self.lower_bolds, self.epub_underlines, self.stats):
             self.changed = True
+        if (self.in_footnotes or is_fn_style or "quote" in psr.attrib.get("AppliedParagraphStyle", "").lower()) and char_ops.unsuperscript_entry_marker(psr):
+            self.changed = True
 
     def _split_table_text_para(self, psr):
         """Split a paragraph holding both a Table and body text into separate table/text PSRs; True if split."""
