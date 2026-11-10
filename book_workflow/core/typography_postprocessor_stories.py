@@ -285,6 +285,11 @@ def restyle_psr(psr, parent_map, toc_norms, toc_clean_norms, stats):
                 psr.set("Justification", "RightAlign")
                 changed = True
             psr.set("FirstLineIndent", "0")
+        elif re.match(r"^\s*\[\d{1,4}[a-z]?\]", txt or ""):
+            if _orig_just != "LeftJustified":
+                psr.set("Justification", "LeftJustified")
+                changed = True
+            psr.set("FirstLineIndent", "0")
         elif _has_soft or any(_k in _sl for _k in ("quote", "verse", "block", "poem", "epigraph")):
             if _orig_just != "LeftAlign":
                 psr.set("Justification", "LeftAlign")

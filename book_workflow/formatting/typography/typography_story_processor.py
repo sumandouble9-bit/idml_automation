@@ -191,8 +191,8 @@ class _StoryProcessor:
 
         is_fn_style, is_quote_style, has_soft_break = self._body_style_pass(psr, pstyle, ptxt)
 
-        # Safety: genuine verse / quote paragraphs must never be LeftJustified
-        if (has_soft_break or is_quote_style) and psr.attrib.get("Justification") == "LeftJustified":
+        # Safety: genuine verse / quote paragraphs must never be LeftJustified (footnotes stay justified)
+        if (has_soft_break or is_quote_style) and not (is_fn_style or self.in_footnotes) and psr.attrib.get("Justification") == "LeftJustified":
             psr.set("Justification", "LeftAlign")
             self.changed = True
 
@@ -629,7 +629,7 @@ class _StoryProcessor:
             psr.set("FirstLineIndent", "0")
             psr.set("SpaceBefore", "1.5")
             psr.set("SpaceAfter", "3")
-            psr.set("Justification", "LeftAlign" if has_soft_break else "LeftJustified")
+            psr.set("Justification", "LeftJustified")
             for csr in psr.iter():
                 if lname(csr.tag) == "CharacterStyleRange":
                     _ensure_font_prop(csr, "Palatino Linotype", point_size=9.65, leading=12)
