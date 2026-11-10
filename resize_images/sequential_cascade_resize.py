@@ -151,9 +151,11 @@ def _cascade_js():
                 gph.horizontalScale = gph.horizontalScale * scale;
                 gph.verticalScale   = gph.verticalScale * scale;
                 fr.fit(FitOptions.FRAME_TO_CONTENT);
+                try { fr.fit(FitOptions.CENTER_CONTENT); } catch(eC){}
             } else {
                 fr.geometricBounds = [ ib[0], ib[1], ib[0] + (ib[2]-ib[0])*scale, ib[1] + (ib[3]-ib[1])*scale ];
                 fr.fit(FitOptions.CONTENT_TO_FRAME);
+                try { fr.fit(FitOptions.CENTER_CONTENT); } catch(eC2){}
             }
         } catch(eRz){}
         try { fr.parent.paragraphs[0].keepWithNext = 1; } catch(eKW){}
@@ -204,9 +206,11 @@ def _cascade_js():
                                 gph.horizontalScale = gph.horizontalScale * scale;
                                 gph.verticalScale   = gph.verticalScale * scale;
                                 fr.fit(FitOptions.FRAME_TO_CONTENT);
+                                try { fr.fit(FitOptions.CENTER_CONTENT); } catch(eCC){}
                             } else {
                                 fr.geometricBounds = [ ib[0], ib[1], ib[0] + newH, ib[1] + imgW * scale ];
                                 fr.fit(FitOptions.CONTENT_TO_FRAME);
+                                try { fr.fit(FitOptions.CENTER_CONTENT); } catch(eCC2){}
                             }
                         } catch(eRz){}
                         // Keep the caption glued to the image so it can never spill to the next page.
