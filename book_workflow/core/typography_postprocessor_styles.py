@@ -118,7 +118,7 @@ def enforce_styles_xml(tmp_dir, stats):
             elif lname(ps.tag) == "CharacterStyle":
                 sid = ps.attrib.get("Self", "")
                 props = next((c for c in ps if lname(c.tag) == "Properties"), None)
-                if sid == "CharacterStyle/boldtext":
+                if sid in ("CharacterStyle/boldtext", "CharacterStyle/b"):
                     ps.set("FontStyle", "Bold")
                     if "PointSize" in ps.attrib:
                         del ps.attrib["PointSize"]
@@ -126,7 +126,7 @@ def enforce_styles_xml(tmp_dir, stats):
                         for af in list(props):
                             if lname(af.tag) == "AppliedFont":
                                 props.remove(af)
-                elif sid in ("CharacterStyle/italicalign", "CharacterStyle/italic"):
+                elif sid in ("CharacterStyle/italicalign", "CharacterStyle/italic", "CharacterStyle/i"):
                     ps.set("FontStyle", "Italic")
                     if "PointSize" in ps.attrib:
                         del ps.attrib["PointSize"]

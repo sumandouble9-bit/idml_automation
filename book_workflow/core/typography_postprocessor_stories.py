@@ -316,12 +316,12 @@ def restyle_psr(psr, parent_map, toc_norms, toc_clean_norms, stats):
         for csr in psr.iter():
             if lname(csr.tag) == "CharacterStyleRange":
                 cstyle = csr.attrib.get("AppliedCharacterStyle", "")
-                is_bold = "bold" in cstyle.lower()
-                is_italic = "italic" in cstyle.lower()
+                is_bold = "bold" in cstyle.lower() or cstyle == "CharacterStyle/b"
+                is_italic = "italic" in cstyle.lower() or cstyle == "CharacterStyle/i"
                 # Emphasis the EPUB enricher applied (CharacterStyle/italic,
                 # CharacterStyle/boldtext) is EPUB-verified and kept at any length;
                 # only stray long italics/bolds from other styles are flattened.
-                is_epub_emph = cstyle in ("CharacterStyle/italic", "CharacterStyle/boldtext")
+                is_epub_emph = cstyle in ("CharacterStyle/italic", "CharacterStyle/boldtext", "CharacterStyle/bolditalic")
                 raw_c_txt = "".join(e.text or "" for e in csr.iter() if lname(e.tag) == "Content").strip()
                 if is_italic and len(raw_c_txt) > 80 and not is_epub_emph:
                     csr.set("AppliedCharacterStyle", r"CharacterStyle/$ID/[No character style]")
@@ -333,6 +333,18 @@ def restyle_psr(psr, parent_map, toc_norms, toc_clean_norms, stats):
                     csr.set("FontStyle", "Regular")
                     cstyle = r"CharacterStyle/$ID/[No character style]"
                     changed = True
+                elif is_bold and is_italic:
+                    if csr.attrib.get("FontStyle") != "Bold Italic":
+                        csr.set("FontStyle", "Bold Italic")
+                        changed = True
+                elif is_italic:
+                    if csr.attrib.get("FontStyle") != "Italic":
+                        csr.set("FontStyle", "Italic")
+                        changed = True
+                elif is_bold:
+                    if csr.attrib.get("FontStyle") != "Bold":
+                        csr.set("FontStyle", "Bold")
+                        changed = True
                 elif not is_bold and not is_italic:
                     csr.set("FontStyle", "Regular")
 

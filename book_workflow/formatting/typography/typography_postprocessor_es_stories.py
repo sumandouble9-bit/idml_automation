@@ -106,7 +106,7 @@ def enforce_styles_xml_es(tmp_dir, stats):
             elif lname(ps.tag) == "CharacterStyle":
                 sid = ps.attrib.get("Self", "")
                 props = next((c for c in ps if lname(c.tag) == "Properties"), None)
-                if sid == "CharacterStyle/boldtext":
+                if sid in ("CharacterStyle/boldtext", "CharacterStyle/b"):
                     ps.set("FontStyle", "Bold")
                     if "PointSize" in ps.attrib:
                         del ps.attrib["PointSize"]
@@ -114,7 +114,7 @@ def enforce_styles_xml_es(tmp_dir, stats):
                         for af in list(props):
                             if lname(af.tag) == "AppliedFont":
                                 props.remove(af)
-                elif sid in ("CharacterStyle/italicalign", "CharacterStyle/italic"):
+                elif sid in ("CharacterStyle/italicalign", "CharacterStyle/italic", "CharacterStyle/i"):
                     ps.set("FontStyle", "Italic")
                     if "PointSize" in ps.attrib:
                         del ps.attrib["PointSize"]
@@ -210,6 +210,18 @@ def collect_toc_norms_es(tmp_dir):
                                                     toc_norms.add(s)
         toc_clean_norms = {re.sub(r"[\s\.\-_]+", "", t) for t in toc_norms}
     return toc_norms, toc_clean_norms
+
+
+def _sync_csr_fontstyle(csr):
+    """Aligns FontStyle with AppliedCharacterStyle so stale Regular overrides do not mask italic/bold."""
+    cs = csr.attrib.get("AppliedCharacterStyle", "")
+    csl = cs.lower()
+    if "bolditalic" in csl:
+        csr.set("FontStyle", "Bold Italic")
+    elif "italic" in csl or cs == "CharacterStyle/i":
+        csr.set("FontStyle", "Italic")
+    elif "bold" in csl or cs == "CharacterStyle/b":
+        csr.set("FontStyle", "Bold")
 
 
 def restyle_psr_es(psr, parent_map, toc_norms, toc_clean_norms, stats):
@@ -453,6 +465,7 @@ def restyle_psr_es(psr, parent_map, toc_norms, toc_clean_norms, stats):
                         changed = True
 
                 # 2. Enforce Palatino Linotype 9.65pt on body text
+                _sync_csr_fontstyle(csr)
                 if pos not in ("Superscript", "Subscript"):
                     _ensure_csr_font(csr, "Palatino Linotype", point_size="9.65", leading="12")
                     changed = True
@@ -471,6 +484,7 @@ def restyle_psr_es(psr, parent_map, toc_norms, toc_clean_norms, stats):
     elif style in ("ParagraphStyle/quotes_normal",):
         for csr in psr.iter():
             if lname(csr.tag) == "CharacterStyleRange":
+                _sync_csr_fontstyle(csr)
                 _ensure_csr_font(csr, "Palatino Linotype", point_size="9.65", leading="12")
                 changed = True
 
