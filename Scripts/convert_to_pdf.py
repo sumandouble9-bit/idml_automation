@@ -181,7 +181,12 @@ def convert_single_idml(app, idml_path: Path, output_pdf_path: Path) -> dict:
                 try {{ _bs.minimumLetterSpacing = -2; _bs.desiredLetterSpacing = 0; _bs.maximumLetterSpacing = 5; }} catch(e4) {{}}
             }}
         }}
-        var _justRag = ["quotes_normal","block1","block","block2","verse","poem"];
+        var _justBlock = ["quotes_normal","block1","block","block2"];
+        for (var _qb = 0; _qb < _justBlock.length; _qb++) {{
+            var _bsq = doc.paragraphStyles.itemByName(_justBlock[_qb]);
+            if (_bsq && _bsq.isValid) {{ try {{ _bsq.justification = Justification.LEFT_JUSTIFIED; }} catch(e5b) {{}} }}
+        }}
+        var _justRag = ["verse","poem"];
         for (var _q = 0; _q < _justRag.length; _q++) {{
             var _rs = doc.paragraphStyles.itemByName(_justRag[_q]);
             if (_rs && _rs.isValid) {{ try {{ _rs.justification = Justification.LEFT_ALIGN; }} catch(e5) {{}} }}

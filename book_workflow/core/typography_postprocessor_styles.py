@@ -109,7 +109,7 @@ def enforce_styles_xml(tmp_dir, stats):
                         del ps.attrib["ParagraphBreakType"]
                 elif sid == "ParagraphStyle/quotes_normal":
                     _ensure_pstyle_font(ps, "Palatino Linotype", point_size="9.65", leading="12")
-                    ps.set("Justification", "LeftAlign")
+                    ps.set("Justification", "LeftJustified")
                     ps.set("KeepLinesTogether", "true")
                     ps.set("KeepFirstAndLastLines", "true")
                     ps.set("MinLinesAtStart", "2")

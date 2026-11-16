@@ -250,9 +250,10 @@ def _flow_overset_tail_js():
         var lastFrame = s.textContainers[s.textContainers.length - 1];
         if (lastFrame.constructor.name !== "TextFrame") continue;
         var guard = 0;
+        var lastCharCount = -1;
         while (lastFrame.overflows) {
             guard++;
-            if (guard > 6000) break;                 // safety
+            if (guard > 40) break;                 // safety (cap runaway overset loop at 40 pages)
             var newPage = doc.pages.add();
             var newFrame = newPage.textFrames.add();
             newFrame.geometricBounds = frameGeom(newPage);
@@ -262,7 +263,8 @@ def _flow_overset_tail_js():
             try { s.recompose(); } catch (eR2) {}
             // If a fresh full-size frame still accepts nothing, it is an
             // unbreakable unit (not our poem/list case) -- stop to avoid a loop.
-            if (lastFrame.characters.length === 0 && lastFrame.overflows) break;
+            if ((lastFrame.characters.length === 0 || lastFrame.characters.length === lastCharCount) && lastFrame.overflows) break;
+            lastCharCount = lastFrame.characters.length;
         }
     }
     doc.viewPreferences.rulerOrigin = oldRuler;

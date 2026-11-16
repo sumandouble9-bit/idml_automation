@@ -58,7 +58,18 @@ class AssetInjectionStage(WorkflowStage):
         total = len(targets)
         for i, idml in enumerate(targets, 1):
             try:
-                fixed = fix_chapter_breaks(idml)
+                caption_map = None
+                for book in books:
+                    if book.stem in idml.name:
+                        epub_cands = list(self.paths.epub_dir.glob(f"*{book.stem}*.epub"))
+                        if epub_cands:
+                            try:
+                                from injection import epub_tools
+                                caption_map = epub_tools.build_caption_map(str(epub_cands[0]))
+                            except Exception:
+                                pass
+                        break
+                fixed = fix_chapter_breaks(idml, caption_map=caption_map)
                 print(f"  [{i}/{total}] {idml.name}: chapter double-break fixed={fixed}")
             except Exception as exc:
                 print(f"  {idml.name}: [!] chapter break fix failed: {exc}")

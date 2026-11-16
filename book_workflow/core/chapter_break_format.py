@@ -1,4 +1,5 @@
 import copy
+import glob
 import io
 import os
 import re
@@ -21,7 +22,7 @@ def format_styles(root):
             continue
         name = (ps.attrib.get("Name", "") or "").lower()
         self_id = (ps.attrib.get("Self", "") or "").lower()
-        if name == "body_text" or self_id == "paragraphstyle/body_text":
+        if name in ("body_text", "quotes_normal") or self_id in ("paragraphstyle/body_text", "paragraphstyle/quotes_normal"):
             # Injection drops the justified body style back to left; re-assert EPUB justification
             # (prose paragraphs that must stay ragged carry their own LeftAlign override).
             if ps.attrib.get("Justification") != "LeftJustified":
@@ -458,39 +459,244 @@ def _content_text(psr):
 
 
 def _norm_alnum(s):
-    return re.sub(r"[^0-9a-z]", "", s.lower())
+    return re.sub(r"[^0-9a-z\u00c0-\u024f]", "", (s or "").lower())
+
+
+_CAPTION_SKIP_STYLES = (
+    "caption", "chapter", "head", "toc", "title", "copyright",
+    "verso", "author", "folio", "running", "doublenine",
+)
+_SENTENCE_BOUNDARY_CHARS = set(".:?!;\u2014\u2013\u2028\n\r\u201d\u00bb)]")
+
+
+def _collect_upcoming_captions(kids, start_idx):
+    """Collects consecutive figure captions attached to the contiguous image run starting at start_idx."""
+    caps = []
+    img_count = 0
+    pos = start_idx
+    n = len(kids)
+    while pos < n:
+        el = kids[pos]
+        if _ln(el.tag) != "ParagraphStyleRange":
+            break
+        has_img = any(_ln(x.tag) in ("Rectangle", "Image") for x in el.iter())
+        if not has_img:
+            if not _content_text(el).strip():
+                pos += 1
+                continue
+            break
+        img_count += 1
+        pos += 1
+        while pos < n and _ln(kids[pos].tag) == "ParagraphStyleRange" and not _content_text(kids[pos]).strip() and not any(_ln(x.tag) in ("Rectangle", "Image", "Table") for x in kids[pos].iter()):
+            pos += 1
+        if pos < n and _ln(kids[pos].tag) == "ParagraphStyleRange":
+            nxt = kids[pos]
+            if not any(_ln(x.tag) in ("Rectangle", "Image", "Table") for x in nxt.iter()):
+                st = nxt.attrib.get("AppliedParagraphStyle", "").lower()
+                txt = _content_text(nxt).strip()
+                if txt and ("caption" in st or (img_count == 1 and not caps)):
+                    caps.append(txt)
+                    pos += 1
+                    continue
+    return caps, img_count
+
+
+def _trim_psr_from_stream_idx(psr, cut_idx):
+    """Truncates all Content text in psr from stream character index cut_idx onwards and ensures trailing <Br />."""
+    stream_pos = 0
+    csrs_to_remove = []
+    for csr in list(psr):
+        if _ln(csr.tag) != "CharacterStyleRange":
+            continue
+        has_media = any(_ln(ch.tag) in ("Rectangle", "Image", "Table") for ch in csr.iter())
+        for ch in list(csr):
+            tag = _ln(ch.tag)
+            if tag == "Content":
+                txt = ch.text or ""
+                end_pos = stream_pos + len(txt)
+                if stream_pos >= cut_idx:
+                    csr.remove(ch)
+                elif end_pos > cut_idx:
+                    ch.text = txt[:cut_idx - stream_pos]
+                stream_pos = end_pos
+            elif tag == "Br":
+                if stream_pos >= cut_idx:
+                    csr.remove(ch)
+                stream_pos += 1
+        has_left = any(_ln(ch.tag) == "Content" and (ch.text or "") for ch in csr) or has_media
+        if not has_left:
+            csrs_to_remove.append(csr)
+    for csr in csrs_to_remove:
+        psr.remove(csr)
+    rem_csrs = [c for c in psr if _ln(c.tag) == "CharacterStyleRange"]
+    if rem_csrs and not any(_ln(ch.tag) == "Br" for ch in rem_csrs[-1]):
+        ET.SubElement(rem_csrs[-1], "Br")
+
+
+def _strip_matching_caption_suffix(parent, before, upcoming_caps, img_count):
+    """Removes or trims duplicate above-image caption(s) from `before`; returns True if modified."""
+    b_style = before.attrib.get("AppliedParagraphStyle", "").lower()
+    if any(k in b_style for k in _CAPTION_SKIP_STYLES):
+        return False
+
+    chars = []
+    alnum_entries = []
+    for csr in before:
+        if _ln(csr.tag) != "CharacterStyleRange":
+            continue
+        for ch in csr:
+            if _ln(ch.tag) == "Content" and ch.text:
+                for c in ch.text:
+                    idx = len(chars)
+                    chars.append(c)
+                    lc = c.lower()
+                    if ("0" <= lc <= "9") or ("a" <= lc <= "z") or ("\u00c0" <= lc <= "\u024f"):
+                        alnum_entries.append((lc, idx))
+            elif _ln(ch.tag) == "Br":
+                chars.append("\n")
+
+    if not alnum_entries:
+        return False
+    bt = "".join(x[0] for x in alnum_entries)
+
+    candidates = [upcoming_caps[:k] for k in range(len(upcoming_caps), 0, -1)]
+    if img_count > len(upcoming_caps) == 1:
+        candidates.insert(0, upcoming_caps * img_count)
+
+    for seq in candidates:
+        target = "".join(_norm_alnum(c) for c in seq)
+        if not target or (len(seq) == 1 and len(target) <= 8 and bt != target):
+            continue
+        if not bt.endswith(target):
+            continue
+
+        cut_alnum = len(alnum_entries) - len(target)
+        if cut_alnum == 0:
+            parent.remove(before)
+            return True
+
+        match_start = alnum_entries[cut_alnum][1]
+        if match_start > 0 and chars[match_start - 1].isalnum():
+            continue
+
+        cut_idx = match_start
+        while cut_idx > 0 and chars[cut_idx - 1] in " \t\xa0\u2028\n\r":
+            cut_idx -= 1
+        if cut_idx == 0:
+            parent.remove(before)
+            return True
+
+        if len(seq) == 1 and len(target) < 15:
+            prev_non_ws = chars[cut_idx - 1]
+            first_cap_alpha = next((c for c in seq[0] if c.isalpha()), "")
+            first_match_alpha = chars[match_start]
+            same_initial_case = (
+                not first_cap_alpha
+                or not first_match_alpha.isalpha()
+                or first_cap_alpha.isupper() == first_match_alpha.isupper()
+            )
+            if prev_non_ws not in _SENTENCE_BOUNDARY_CHARS or not same_initial_case:
+                continue
+
+        _trim_psr_from_stream_idx(before, cut_idx)
+        return True
+    return False
+
+
+def ensure_missing_below_captions(root, caption_map=None):
+    """Inserts fig caption below any image that is missing its below-image caption
+    according to caption_map, so multi-image runs don't lose captions."""
+    if not caption_map:
+        return False
+    changed = False
+    for parent in list(root.iter()):
+        for el in list(parent):
+            if _ln(el.tag) != "ParagraphStyleRange":
+                continue
+            for im in el.findall(".//Image"):
+                link = im.find(".//Link")
+                uri = link.get("LinkResourceURI", "") if link is not None else ""
+                img_name = uri.split("/")[-1]
+                if not img_name or img_name not in caption_map:
+                    continue
+                cap_text = caption_map[img_name]
+                if not cap_text or len(cap_text.strip()) < 2:
+                    continue
+
+                curr_kids = list(parent)
+                try:
+                    curr_idx = curr_kids.index(el)
+                except ValueError:
+                    continue
+
+                # Check if caption is already below this image
+                has_cap_below = False
+                if curr_idx + 1 < len(curr_kids) and _ln(curr_kids[curr_idx + 1].tag) == "ParagraphStyleRange":
+                    nxt = curr_kids[curr_idx + 1]
+                    nxt_st = nxt.attrib.get("AppliedParagraphStyle", "").lower()
+                    if "caption" in nxt_st:
+                        has_cap_below = True
+                    elif not any(_ln(x.tag) in ("Rectangle", "Image", "Table") for x in nxt.iter()):
+                        if _content_text(nxt).strip() == cap_text.strip():
+                            has_cap_below = True
+
+                if not has_cap_below and curr_idx + 1 < len(curr_kids) and _ln(curr_kids[curr_idx + 1].tag) == "ParagraphStyleRange":
+                    nxt = curr_kids[curr_idx + 1]
+                    has_nxt_img = any(_ln(x.tag) in ("Rectangle", "Image") for x in nxt.iter())
+                    if has_nxt_img:
+                        continue
+
+                if not has_cap_below:
+                    cap_psr = ET.Element("ParagraphStyleRange", {
+                        "AppliedParagraphStyle": "ParagraphStyle/fig caption",
+                        "Justification": "CenterAlign",
+                        "SpaceBefore": "0",
+                        "SpaceAfter": "6",
+                    })
+                    csr = ET.SubElement(cap_psr, "CharacterStyleRange", {
+                        "AppliedCharacterStyle": "CharacterStyle/$ID/[No character style]",
+                        "PointSize": "9",
+                        "FontStyle": "Regular",
+                    })
+                    cnt = ET.SubElement(csr, "Content")
+                    cnt.text = cap_text
+                    ET.SubElement(csr, "Br")
+                    parent.insert(curr_idx + 1, cap_psr)
+                    changed = True
+    return changed
 
 
 def remove_duplicate_above_captions(root):
-    """Removes a caption that was left ABOVE an image when the same caption is also placed
-    BELOW it (the EPUB caption injection adds the lower one; the stray upper one must go)."""
+    """Removes a caption (or combined multi-image caption tail) left ABOVE an image when
+    the matching fig caption(s) are already placed BELOW the image(s)."""
     changed = False
     for parent in list(root.iter()):
-        kids = list(parent)
-        for i, el in enumerate(kids):
-            if _ln(el.tag) != "ParagraphStyleRange":
+        i = 0
+        while True:
+            kids = list(parent)
+            if i >= len(kids):
+                break
+            el = kids[i]
+            if _ln(el.tag) != "ParagraphStyleRange" or not any(_ln(x.tag) in ("Rectangle", "Image") for x in el.iter()):
+                i += 1
                 continue
-            if not any(_ln(x.tag) in ("Rectangle", "Image") for x in el.iter()):
+            upcoming_caps, img_count = _collect_upcoming_captions(kids, i)
+            if not upcoming_caps:
+                i += 1
                 continue
-            after = None
-            for j in range(i + 1, min(len(kids), i + 3)):
-                if _ln(kids[j].tag) == "ParagraphStyleRange" and _content_text(kids[j]).strip():
-                    after = kids[j]
-                    break
             before = None
-            for j in range(i - 1, max(-1, i - 3), -1):
+            for j in range(i - 1, max(-1, i - 4), -1):
                 if _ln(kids[j].tag) == "ParagraphStyleRange":
                     if any(_ln(x.tag) in ("Rectangle", "Image", "Table") for x in kids[j].iter()):
                         break
                     if _content_text(kids[j]).strip():
                         before = kids[j]
                         break
-            if after is None or before is None:
-                continue
-            at, bt = _norm_alnum(_content_text(after)), _norm_alnum(_content_text(before))
-            if at and bt and at == bt and len(at) > 8:
-                parent.remove(before)
+            if before is not None and _strip_matching_caption_suffix(parent, before, upcoming_caps, img_count):
                 changed = True
+                i = max(0, i - 1)
+                continue
+            i += 1
     return changed
 
 
@@ -530,9 +736,20 @@ def restore_footer_page_number(stories_dir):
     return changed
 
 
-def apply_to_idml(idml_path):
+def apply_to_idml(idml_path, caption_map=None):
     """Applies chapter break formatting to an IDML file in-place."""
     idml_path = str(idml_path)
+    if caption_map is None:
+        m = re.search(r"\b(\d{10,13})\b", os.path.basename(idml_path))
+        if m:
+            isbn = m.group(1)
+            epubs = glob.glob(f"epub_input_files/*{isbn}*.epub")
+            if epubs and os.path.exists(epubs[0]):
+                try:
+                    from injection import epub_tools
+                    caption_map = epub_tools.build_caption_map(epubs[0])
+                except Exception:
+                    caption_map = None
     tmpd = tempfile.mkdtemp(prefix="idml_chbreak_")
     try:
         with zipfile.ZipFile(idml_path, "r") as z:
@@ -563,6 +780,8 @@ def apply_to_idml(idml_path):
                 root = tree.getroot()
                 story_changed = format_stories(root)
                 if fix_apostrophe_glyphs(root):
+                    story_changed = True
+                if ensure_missing_below_captions(root, caption_map):
                     story_changed = True
                 if remove_duplicate_above_captions(root):
                     story_changed = True

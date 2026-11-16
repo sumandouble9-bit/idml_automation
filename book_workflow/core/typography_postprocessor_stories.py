@@ -290,9 +290,15 @@ def restyle_psr(psr, parent_map, toc_norms, toc_clean_norms, stats):
                 psr.set("Justification", "LeftJustified")
                 changed = True
             psr.set("FirstLineIndent", "0")
-        elif _has_soft or any(_k in _sl for _k in ("quote", "verse", "block", "poem", "epigraph")):
+        elif _has_soft or any(_k in _sl for _k in ("verse", "poem")):
             if _orig_just != "LeftAlign":
                 psr.set("Justification", "LeftAlign")
+                changed = True
+            psr.set("SingleWordJustification", "AlignLeft")
+            psr.set("FirstLineIndent", "0")
+        elif any(_k in _sl for _k in ("quote", "block", "epigraph")):
+            if _orig_just != "LeftJustified":
+                psr.set("Justification", "LeftJustified")
                 changed = True
             psr.set("SingleWordJustification", "AlignLeft")
             psr.set("FirstLineIndent", "0")

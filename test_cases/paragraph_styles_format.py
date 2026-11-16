@@ -11,15 +11,21 @@ def _obj(keys):
 
 
 _JS = r"""
-var CENTER = __CENTER__;
-var BLOCK  = __BLOCK__;
-var RIGHT  = __RIGHT__;
+var CENTER     = __CENTER__;
+var BLOCK      = __BLOCK__;
+var RIGHT      = __RIGHT__;
+var BLOCK_LEFT = __BLOCK_LEFT__;
 var doc = app.activeDocument;
 function key(s){ return String(s).replace(/[^a-zA-Z0-9]/g, "").toLowerCase().substring(0, 60); }
+function isSkipStyle(sn){
+    var skip = ["chapter","head","toc","title","copyright","verso","author","caption","folio","running","doublenine","master","index","verse","poem"];
+    for (var i = 0; i < skip.length; i++){ if (sn.indexOf(skip[i]) >= 0) return true; }
+    return false;
+}
 var bodyStyle = null;
 var _aps = doc.allParagraphStyles;
 for (var _i = 0; _i < _aps.length; _i++){ if (_aps[_i].name == "body_text"){ bodyStyle = _aps[_i]; break; } }
-var nCenter = 0, nBlock = 0, nRight = 0;
+var nCenter = 0, nBlock = 0, nRight = 0, nBlockJust = 0;
 for (var si = 0; si < doc.stories.length; si++){
     var paras = doc.stories[si].paragraphs;
     for (var pi = 0; pi < paras.length; pi++){
@@ -30,6 +36,8 @@ for (var si = 0; si < doc.stories.length; si++){
             var isCenter = (k.length >= 4) ? !!CENTER[k] : false;
             var isRight = (k.length >= 4) ? !!RIGHT[k] : false;
             var isBlock = (k.length >= 4) ? !!BLOCK[k] : false;
+            var isBlockLeft = (k.length >= 4) ? !!BLOCK_LEFT[k] : false;
+            var hasSoft = (ptxt.indexOf("\u2028") >= 0 || ptxt.indexOf("\n") >= 0);
 
             if (isCenter){
                 try { if (p.justification != Justification.CENTER_ALIGN){ p.justification = Justification.CENTER_ALIGN; nCenter++; } } catch(e){}
@@ -42,9 +50,20 @@ for (var si = 0; si < doc.stories.length; si++){
                 try { if (bodyStyle){ p.appliedParagraphStyle = bodyStyle; nBlock++; } } catch(e){}
             }
 
-            // Always guard paragraphs with soft breaks (  or 
-) from loose justification
-            if (ptxt.indexOf("\u2028") >= 0 || ptxt.indexOf("\n") >= 0){
+            // Apply block justification ONLY to block/quote paragraphs (never chapter headings or frontmatter)
+            if (!isCenter && !isRight && !isSkipStyle(sn) && (isBlock || sn.indexOf("quote") >= 0 || sn.indexOf("block") >= 0) && !hasSoft){
+                try {
+                    if (isBlockLeft){
+                        if (p.justification != Justification.LEFT_ALIGN){ p.justification = Justification.LEFT_ALIGN; }
+                    } else if (isBlock && p.justification != Justification.LEFT_JUSTIFIED){
+                        p.justification = Justification.LEFT_JUSTIFIED;
+                        nBlockJust++;
+                    }
+                } catch(e){}
+            }
+
+            // Always guard paragraphs with soft breaks (\u2028 or \n) from loose justification
+            if (hasSoft){
                 try {
                     if (isRight){
                         p.justification = Justification.RIGHT_ALIGN;
@@ -58,15 +77,16 @@ for (var si = 0; si < doc.stories.length; si++){
         } catch(eP){}
     }
 }
-"CENTER=" + nCenter + " BLOCK_RESET=" + nBlock + " RIGHT=" + nRight;
+"CENTER=" + nCenter + " BLOCK_RESET=" + nBlock + " BLOCK_JUST=" + nBlockJust + " RIGHT=" + nRight;
 """
 
 
 def run(app, epub_path):
-    """Re-apply EPUB paragraph alignment (center/right) and un-stick the block/quote
-    style from normal paragraphs, driven dynamically by the book's own classes."""
+    """Re-apply EPUB paragraph alignment (center/right/justified block) and un-stick the
+    block/quote style from normal paragraphs, driven dynamically by the book's own classes."""
     cls = epub_classes.extract(epub_path)
     js = (_JS.replace("__CENTER__", _obj(cls["center"]))
              .replace("__BLOCK__", _obj(cls["block"]))
-             .replace("__RIGHT__", _obj(cls["right"])))
+             .replace("__RIGHT__", _obj(cls["right"]))
+             .replace("__BLOCK_LEFT__", _obj(cls["block_left"])))
     return app.DoScript(js, JS)

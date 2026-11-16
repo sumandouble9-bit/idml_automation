@@ -739,7 +739,17 @@ def sanitize_vertical_justification_js():
                 var tf = st.textContainers[f];
                 if (tf.constructor.name !== "TextFrame") continue;
                 var pg = tf.parentPage;
-                if (!pg || onMasterSpread(tf)) continue;
+                if (!pg || onMasterSpread(tf) || pg.documentOffset === 1) continue;
+                var isCopyright = false;
+                try {
+                    for (var ci = 0; ci < tf.paragraphs.length; ci++){
+                        var csn = tf.paragraphs[ci].appliedParagraphStyle.name.toLowerCase();
+                        if (csn.indexOf("copyright") >= 0 || csn.indexOf("verso_") >= 0 || csn.indexOf("doublenine") >= 0){
+                            isCopyright = true; break;
+                        }
+                    }
+                } catch(eC){}
+                if (isCopyright) continue;
                 var tfp = tf.textFramePreferences;
                 var hasImg = false;
                 try { hasImg = (tf.allGraphics.length > 0); } catch(eG){}

@@ -10,8 +10,7 @@ except Exception:
 
 
 def apply_center_only(story_root, key_fmt):
-    center_keys = set(k for k, v in key_fmt.items() if v.get("align") == "center")
-    if not center_keys:
+    if not key_fmt:
         return False
     changed = False
     for psr in story_root.iter():
@@ -48,15 +47,21 @@ def apply_center_only(story_root, key_fmt):
             continue
         if fmt is None:
             continue
+        align = fmt.get("align")
         is_block = any(k in sl for k in ("quote", "block", "epigraph", "verse", "poem", "extract"))
-        if is_block and ("li" in fmt or "ri" in fmt):
+        is_verse = any(k in sl for k in ("verse", "poem"))
+        if is_block and ("li" in fmt or "ri" in fmt or align in ("justify", "left")):
             if "li" in fmt and psr.attrib.get("LeftIndent") != str(fmt["li"]):
                 psr.set("LeftIndent", str(fmt["li"]))
                 changed = True
             if "ri" in fmt and psr.attrib.get("RightIndent") != str(fmt["ri"]):
                 psr.set("RightIndent", str(fmt["ri"]))
                 changed = True
-            if "\u2028" not in full and psr.attrib.get("Justification") != "LeftJustified":
+            if align == "left":
+                if psr.attrib.get("Justification") != "LeftAlign":
+                    psr.set("Justification", "LeftAlign")
+                    changed = True
+            elif not is_verse and "\u2028" not in full and psr.attrib.get("Justification") != "LeftJustified":
                 psr.set("Justification", "LeftJustified")
                 changed = True
     return changed

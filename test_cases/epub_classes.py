@@ -13,9 +13,9 @@ def _strip_tags(s):
 
 def extract(epub_path):
     """Return normalized-prefix-key sets per alignment role, derived dynamically
-    from the book's own CSS + XHTML: {"center": set, "block": set, "right": set}."""
-    center_cls, block_cls, right_cls = set(), set(), set()
-    out = {"center": set(), "block": set(), "right": set()}
+    from the book's own CSS + XHTML: {"center": set, "block": set, "right": set, "block_left": set}."""
+    center_cls, block_cls, right_cls, left_cls = set(), set(), set(), set()
+    out = {"center": set(), "block": set(), "right": set(), "block_left": set()}
     try:
         z = zipfile.ZipFile(epub_path, "r")
     except Exception:
@@ -30,10 +30,12 @@ def extract(epub_path):
                 pass
     for m in re.finditer(r"\.([A-Za-z0-9_-]+)\s*\{([^}]*)\}", css):
         cls, body = m.group(1), m.group(2)
-        if re.search(r"text-align\s*:\s*center", body):
+        if re.search(r"text-align\s*:\s*center", body, re.I):
             center_cls.add(cls)
-        if re.search(r"text-align\s*:\s*right", body):
+        if re.search(r"text-align\s*:\s*right", body, re.I):
             right_cls.add(cls)
+        if re.search(r"text-align\s*:\s*left", body, re.I):
+            left_cls.add(cls)
 
     for n in z.namelist():
         if not n.lower().endswith((".xhtml", ".html", ".htm")):
@@ -44,14 +46,18 @@ def extract(epub_path):
             continue
         for tag, attrs, inner in re.findall(r"(?is)<(p|div|blockquote)\b([^>]*)>(.*?)</\1>", d):
             cls = (re.search(r'class="([^"]*)"', attrs) or [None, ""])[1]
+            sty = (re.search(r'style="([^"]*)"', attrs) or [None, ""])[1]
             classes = set(cls.split())
-            if re.search(r"(?is)<(p|div|table|blockquote)", inner):
+            if re.search(r"(?is)<(p|div|table|blockquote) ", inner):
                 continue  # skip container elements; only key leaf text blocks
             key = _key(_strip_tags(inner))
             if len(key) < 4:
                 continue
-            if tag == "blockquote" or any("block" in c.lower() or "quote" in c.lower() for c in classes):
+            is_blk = tag == "blockquote" or any("block" in c.lower() or "quote" in c.lower() for c in classes)
+            if is_blk:
                 out["block"].add(key)
+                if (classes & left_cls) or re.search(r"text-align\s*:\s*left", sty, re.I):
+                    out["block_left"].add(key)
             if (classes & center_cls) or any("center" in c for c in classes):
                 out["center"].add(key)
             if (classes & right_cls) or "right" in classes:
@@ -62,5 +68,5 @@ def extract(epub_path):
 if __name__ == "__main__":
     import sys
     r = extract(sys.argv[1])
-    for k in ("center", "block", "right"):
-        print("%-7s : %d" % (k, len(r[k])))
+    for k in ("center", "block", "right", "block_left"):
+        print("%-10s : %d" % (k, len(r[k])))

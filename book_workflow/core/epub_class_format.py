@@ -148,10 +148,13 @@ def apply_class_format(story_root, key_fmt):
                     psr.set(a, "0")
                     changed = True
             continue
-        if align == "right" and psr.attrib.get("Justification") != "RightAlign":
-            psr.set("Justification", "RightAlign")
-            changed = True
+        if align == "right":
+            if psr.attrib.get("Justification") != "RightAlign":
+                psr.set("Justification", "RightAlign")
+                changed = True
+            continue
         _is_block = any(k in sl for k in ("quote", "block", "epigraph", "verse", "poem", "extract"))
+        _is_verse = any(k in sl for k in ("verse", "poem"))
         if _FOOTNOTE_ENTRY.match(txt):
             continue
         if _is_block:
@@ -161,7 +164,11 @@ def apply_class_format(story_root, key_fmt):
             if "ri" in fmt and psr.attrib.get("RightIndent") != str(fmt["ri"]):
                 psr.set("RightIndent", str(fmt["ri"]))
                 changed = True
-            if ("li" in fmt or "ri" in fmt) and "\u2028" not in txt and psr.attrib.get("Justification") != "LeftJustified":
+            if align == "left":
+                if psr.attrib.get("Justification") != "LeftAlign":
+                    psr.set("Justification", "LeftAlign")
+                    changed = True
+            elif ("li" in fmt or "ri" in fmt or align == "justify") and not _is_verse and "\u2028" not in txt and psr.attrib.get("Justification") != "LeftJustified":
                 psr.set("Justification", "LeftJustified")
                 changed = True
         else:
