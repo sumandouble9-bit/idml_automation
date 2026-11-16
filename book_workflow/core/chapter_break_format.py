@@ -83,18 +83,11 @@ def _strip_trailing_break(psr):
 
 
 def _preceding_has_content(psr):
-    """True unless psr is an empty, break-carrying spacer that lost its BlankPageSpacer marker during injection."""
-    if any(_ln(c.tag) in ("Rectangle", "Polygon", "Oval", "Image", "Table") for c in psr.iter()):
+    """True if psr has real text or anchored graphics/objects."""
+    if any(_ln(c.tag) in ("Rectangle", "Polygon", "Oval", "Image", "Table", "TextFrame", "GraphicLine", "Group") for c in psr.iter()):
         return True
     txt = "".join(psr.itertext()).strip("\ufeff\u2028\u00a0 \t\r\n")
-    if txt:
-        return True
-    breaks = (
-        psr.attrib.get("StartParagraph") == "NextPage"
-        or psr.attrib.get("ParagraphBreakType") == "NextPage"
-        or any(c.attrib.get("ParagraphBreakType") == "NextPage" for c in psr.findall("CharacterStyleRange"))
-    )
-    return not breaks
+    return bool(txt)
 
 
 def format_stories(root):
@@ -128,18 +121,37 @@ def format_stories(root):
             prev_elem = kids[prev_idx]
             if _ln(prev_elem.tag) == "ParagraphStyleRange":
                 p_st = (prev_elem.attrib.get("AppliedParagraphStyle", "") or "").lower()
-                p_tx = "".join(prev_elem.itertext()).strip()
-                if (
-                    "chapter_name" in p_st
-                    or "sub-heading" in p_st
-                    or "after_chapter" in p_st
-                    or any(k in p_st for k in ["heading", "title", "part"])
-                    or re.match(r"^\s*(?:PART|PARTE|BOOK|LIBRO|[IVXLCDM0-9]+)\b", p_tx, re.I)
-                    or re.match(r"^\s*(?:PART|PARTE|BOOK|LIBRO|[IVXLCDM0-9]+)\b", "".join(psr.itertext()).strip(), re.I)
-                ):
-                    is_paired = True
-                    break
-                elif p_tx:
+                p_tx = "".join(prev_elem.itertext()).strip("\ufeff\u2028\u00a0 \t\r\n")
+                has_obj = any(_ln(c.tag) in ("Rectangle", "Polygon", "Oval", "Image", "Table") for c in prev_elem.iter())
+                if p_tx or has_obj:
+                    # Non-heading styles (body text, quotes, footnotes, etc.) NEVER form a paired heading
+                    is_non_heading_style = any(
+                        k in p_st for k in [
+                            "body", "quote", "block", "footnote", "caption",
+                            "credit", "extract", "normaltext", "toc", "index"
+                        ]
+                    )
+                    if is_non_heading_style or len(p_tx) > 120:
+                        is_paired = False
+                        break
+
+                    is_prev_heading = (
+                        "chapter_name" in p_st
+                        or "sub-heading" in p_st
+                        or "after_chapter" in p_st
+                        or any(k in p_st for k in ["heading", "title", "part"])
+                        or bool(re.match(r"^\s*(?:PART|PARTE|BOOK|LIBRO|CHAPTER|CAP[IÍ]TULO|SECTION|SECCI[OÓ]N|ACTO?|CANTO)\b", p_tx, re.I))
+                        or bool(re.match(r"^\s*(?:[IVXLCDM]+|[0-9]+)[\.\:\-]?\s*$", p_tx, re.I))
+                        or (bool(re.match(r"^\s*(?:[IVXLCDM]+|[0-9]+)[\.\:\-]\s+\S+", p_tx, re.I)) and len(p_tx) <= 60)
+                    )
+                    if is_prev_heading:
+                        c_tx = "".join(psr.itertext()).strip("\ufeff\u2028\u00a0 \t\r\n")
+                        is_prev_chap = bool(re.match(r"^\s*(?:CHAPTER|CAP[IÍ]TULO)\b", p_tx, re.I))
+                        is_curr_chap = bool(re.match(r"^\s*(?:CHAPTER|CAP[IÍ]TULO)\b", c_tx, re.I))
+                        if is_prev_chap and is_curr_chap:
+                            is_paired = False
+                        else:
+                            is_paired = True
                     break
             prev_idx -= 1
 
@@ -203,6 +215,12 @@ def format_stories(root):
                 if _strip_trailing_break(prev_child):
                     changed = True
             continue
+
+        # Main chapter heading: restore style if mistakenly marked as after_chapter_name_heading
+        curr_st = psr.attrib.get("AppliedParagraphStyle", "")
+        if "after_chapter" in curr_st.lower():
+            psr.set("AppliedParagraphStyle", "ParagraphStyle/chapter_name")
+            changed = True
 
         # Main chapter heading: must have 14.5 gap
         if psr.attrib.get("SpaceBefore") != "14.5":
