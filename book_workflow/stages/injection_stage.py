@@ -74,6 +74,17 @@ class AssetInjectionStage(WorkflowStage):
             except Exception as exc:
                 print(f"  {idml.name}: [!] chapter break fix failed: {exc}")
 
+    def balance_tables(self, books):
+        from table.table_column_balancer import balance_idml_tables
+        stems = {book.stem for book in books}
+        targets = [f for f in self.paths.final_idml_dir.glob("*.idml")
+                   if any(stem in f.name for stem in stems) and not f.name.endswith(".tmp")]
+        for idml in targets:
+            try:
+                balance_idml_tables(str(idml))
+            except Exception:
+                pass
+
     def fill_bottom_gaps(self, books):
         line = "=" * 70
         print(f"\n{line}\nSTEP 3b: TEXT BOTTOM-GAP FILLING (Reflow body lines down to bottom margin)")
@@ -92,9 +103,7 @@ class AssetInjectionStage(WorkflowStage):
         code = self.inject(books, force=force)
         result.record(code == 0)
         self.fix_chapter_double_breaks(books)
-        # Post-injection bottom-gap fill disabled: vertical-justify now runs BEFORE injection
-        # (see vertical_bottom_align.py). Re-enable by uncommenting the line below.
-        # self.fill_bottom_gaps(books)
+        self.balance_tables(books)
         return result
 
 

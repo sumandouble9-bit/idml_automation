@@ -18,6 +18,13 @@ class DocumentNormalizationStage(PipelineStage):
 
         from ..formatting.document_setup import normalize_document_setup
         normalize_document_setup.normalize_one_file(str(in_file), str(out_file))
+
+        try:
+            from table.table_column_balancer import balance_idml_tables
+            balance_idml_tables(str(out_file))
+        except Exception:
+            pass
+
         print(f"       [OK] Success: {out_file.name}")
         return True
 

@@ -63,8 +63,11 @@ class BookWorkflow:
         if step in ("all", "3"):
             self.injection.inject(books, force=force_run)
             self.injection.fix_chapter_double_breaks(books)
+            self.injection.balance_tables(books)
         if step == "3d":
             self.injection.fix_chapter_double_breaks(books)
+        if step == "3e":
+            self.injection.balance_tables(books)
         # Post-injection bottom-gap fill (3b) disabled: vertical-justify runs BEFORE injection now
         # (see vertical_bottom_align.py). Re-enable by uncommenting the block below.
         # if step in ("all", "3b"):
