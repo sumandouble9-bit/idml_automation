@@ -167,12 +167,52 @@ def compute_balanced_widths(table, num_rows, num_cols, title_rows, is_24, cur_wi
     return widths
 
 
+def fix_table_52_horizontal(table):
+    cols = [c for c in table if c.tag.endswith("Column")]
+    w52 = [54.0, 52.0, 48.0, 16.0, 20.0, 64.0, 34.0, 18.0, 18.0]
+    for c, w in zip(cols, w52):
+        c.set("SingleColumnWidth", str(w))
+    for cell in table.iter():
+        if cell.tag.endswith("Cell"):
+            cell.set("ClipContentToTextCell", "false")
+            for attr in ("TextLeftInset", "LeftInset", "TextRightInset", "RightInset",
+                         "TextTopInset", "TopInset", "TextBottomInset", "BottomInset"):
+                cell.set(attr, "2")
+    return True
+
+
+def fix_table_92_horizontal(table):
+    cols = [c for c in table if c.tag.endswith("Column")]
+    w92 = [45.0, 26.0, 28.0, 56.0, 86.0, 35.0, 48.0]
+    for c, w in zip(cols, w92):
+        c.set("SingleColumnWidth", str(w))
+    for cell in table.iter():
+        if cell.tag.endswith("Cell"):
+            cell.set("ClipContentToTextCell", "false")
+            for attr in ("TextLeftInset", "LeftInset", "TextRightInset", "RightInset",
+                         "TextTopInset", "TopInset", "TextBottomInset", "BottomInset"):
+                cell.set(attr, "2")
+    return True
+
+
 def balance_table(table, max_table_width=324.0):
     cols = [c for c in table if c.tag.endswith("Column")]
     rows = [r for r in table if r.tag.endswith("Row")]
     num_rows, num_cols = len(rows), len(cols)
     if num_rows <= 1 or num_cols <= 1:
         return False
+
+    if num_cols >= 12:
+        return False
+
+    c0_text = get_clean_text(get_cell(table, 0, 0))
+    c2_text = get_clean_text(get_cell(table, 2, 0))
+    if num_cols == 9 and c0_text.startswith("RECEIPTS") and c2_text.startswith("PAYMENTS"):
+        return fix_table_52_horizontal(table)
+
+    cur_widths = [float(c.attrib.get("SingleColumnWidth", 0)) for c in cols]
+    if num_cols == 7 and cur_widths[3] > 100.0 and cur_widths[1] < 20.0:
+        return fix_table_92_horizontal(table)
 
     cur_widths = [float(c.attrib.get("SingleColumnWidth", 0)) for c in cols]
     is_imbal, title_rows, is_24 = detect_imbalance(table, num_rows, num_cols, cur_widths)
@@ -265,7 +305,14 @@ def balance_idml_tables(idml_path, max_table_width=324.0):
                     if os.path.isfile(fp):
                         zout.write(fp, nm, compress_type=zipfile.ZIP_DEFLATED)
             shutil.move(tmp_zip, idml_path)
-        return any_changed
+
+        try:
+            from .vertical_table_rotator import rotate_unfitted_idml_tables
+        except ImportError:
+            from vertical_table_rotator import rotate_unfitted_idml_tables
+        rot_changed = rotate_unfitted_idml_tables(idml_path)
+
+        return any_changed or rot_changed
     finally:
         shutil.rmtree(tmpd, ignore_errors=True)
 
