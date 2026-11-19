@@ -24,6 +24,10 @@ Engineered specifically for dual-language book production (**Spanish** and **Eng
 5. [Recent Bug Fixes & Typographic Hardening](#recent-bug-fixes--typographic-hardening)
    - [Fix 1: Extreme Word Spacing on Letter Signatures / Soft Breaks](#fix-1-extreme-word-spacing-on-letter-signatures--soft-breaks)
    - [Fix 2: Chapter & Book Headings Ending with Years/Numbers Not Splitting](#fix-2-chapter--book-headings-ending-with-yearsnumbers-not-splitting)
+   - [Fix 3: Title Page Publisher Logo Bottom-Margin Guide Snapping](#fix-3-title-page-publisher-logo-bottom-margin-guide-snapping)
+   - [Fix 4: Title Page Sequential Order & Subtitle/Quote Extraction](#fix-4-title-page-sequential-order--subtitlequote-extraction)
+   - [Fix 5: Dynamic Title Page Vertical Spacing & Logo Margin Clearance](#fix-5-dynamic-title-page-vertical-spacing--logo-margin-clearance)
+   - [Fix 6: Single-Pass Final IDML Deliverable Generation](#fix-6-single-pass-final-idml-deliverable-generation)
 6. [Publishing Specifications & Standard Matrix](#publishing-specifications--standard-matrix)
 7. [Repository Directory Structure](#repository-directory-structure)
 8. [Prerequisites & Installation](#prerequisites--installation)
@@ -232,6 +236,9 @@ full page count, then:
   - Author credit formatted:
     - English: standard Roman `"by"` credit.
     - Spanish: italic *"Por"* credit with baseline calculation aiming for target baseline `~374 pt`.
+  - **Sequential Hierarchy:** Single-pass parser preserves exact manuscript sequence: Title $\rightarrow$ Subtitle $\rightarrow$ Author $\rightarrow$ Author Notes/Sub-credits (`centre_align`) $\rightarrow$ Epigraph/Quotes (`quotes_normal`) $\rightarrow$ Attribution.
+  - **Dynamic Logo Clearance:** Proportional vertical spacing automatically reduces `SpaceBefore` on `"by"` / `"Por"` when post-author notes or quotes are present, guaranteeing $\ge 85\text{--}90\text{ pt}$ breathing room above the logo.
+  - **Publisher Logo Guide Snapping:** Polygon is placed flush directly above the bottom margin guide line (`y = 557.41 pt`, `ItemTransform = "1 0 0 1 198.5325489776247 234.0"`).
 - **Copyright Page:** Centered legal notices with automated ISBN replacement, translation attribution, and publisher branding.
 - **Table of Contents:** Dot leaders (`. . . .`) with right-aligned tab stops at `324 pt` and trailing page numbers.
 
@@ -325,6 +332,34 @@ Analyzes page balance across all body pages:
   ```
   Headings ending in historical years (such as `1817`) are now correctly recognized as headings and split onto two centered lines separated by `\u2028`.
 
+### Fix 3: Title Page Publisher Logo Bottom-Margin Guide Snapping
+- **Symptom:** On Page 1 (Title Page), the publisher imprint logo Polygon frame was floating ~15 pt above the bottom margin line (`y = 558 pt`) or varying inconsistently across documents.
+- **Root Cause:** Multiple template generators applied disparate transformation coordinates or failed to account for polygon vertex bounds relative to the 5.5 × 8.5 in page coordinate grid.
+- **Resolution:**
+  1. Standardized the publisher logo Polygon transform to `ItemTransform = "1 0 0 1 198.5325489776247 234.0"` across `title_page_es.py`, `title_page_en.py`, `document_setup_impl.py`, and `chapter_spacing_styles.py`.
+  2. With target polygon vertices at top `-28.35 pt` and bottom `+17.41 pt`, the logo's bottom edge sits at $y = 557.41\text{ pt}$ in page coordinates, resting exactly $0.59\text{ pt}$ flush directly above the $558\text{ pt}$ bottom margin guide line.
+  3. Added dynamic margin guide calculation to `injection/logo_inject.py` to snap the logo frame directly to the spread's bottom margin line during ExtendScript injection.
+
+### Fix 4: Title Page Sequential Order & Subtitle/Quote Extraction
+- **Symptom:** In books containing both an author subtitle / sub-credit (e.g. *ENCONTRADO ENTRE LOS PAPELES DEL DIFUNTO DIEDRICH KNICKERBOCKER.*) and an epigraph / verse quote (e.g. *CASTILLO DE LA INDOLENCIA*), the subtitle was erroneously moved to the very bottom below the poem and attribution.
+- **Root Cause:** In `_extract_title_parts` (`title_page_es.py` and `title_page_en.py`), a two-pass filter eagerly captured paragraphs with quote styles (`quotes_normal`) into the `epigraph` variable first. When non-quote paragraphs were subsequently scanned, post-author notes were appended to the end of `epigraph` (`epigraph += "\u2028" + txt`), inverting the document's original sequence.
+- **Resolution:**
+  1. Refactored `_extract_title_parts` to single-pass sequential document order:
+     $$\text{Title} \longrightarrow \text{Subtitle (if before author)} \longrightarrow \text{Author line} \longrightarrow \text{Author notes / sub-credits} \longrightarrow \text{Epigraph / Quotes} \longrightarrow \text{Attribution}$$
+  2. Text appearing between the author and quotes is now preserved as author sub-credits (`centre_align` style, 11 pt, Times New Roman, centered), placed directly below the author name before any epigraphs or quotes.
+
+### Fix 5: Dynamic Title Page Vertical Spacing & Logo Margin Clearance
+- **Symptom:** When a book had multiple lines of text below the author (notes, poems, quotes), the fixed `SpaceBefore` on `"by"` / `"Por"` (aiming for baseline $\sim 374\text{ pt}$) pushed the entire text block down until it collided with the publisher logo at the bottom margin.
+- **Root Cause:** The title page spacing model assumed books only contain Title and Author, leaving insufficient vertical clearance for manuscripts with lengthy quotes or sub-credits.
+- **Resolution:**
+  In `book_workflow/core/chapter_spacing_styles.py` (`format_title_story`), implemented dynamic line counting and proportional vertical clearance:
+  - **Books with NO text below the author** (e.g. Book 18670): keeps standard baseline $\sim 374\text{ pt}$ with generous breathing room below the author.
+  - **Books WITH extra lines below author** (e.g. Book 739): calculates total height of sub-credits, quotes, and attributions, and dynamically reduces `SpaceBefore` on `"by"` / `"Por"` (e.g. from $180\text{ pt}$ down to $94\text{ pt}$) to anchor the text block higher on the page and guarantee a clean open margin ($\ge 85\text{--}90\text{ pt}$) above the publisher logo.
+
+### Fix 6: Single-Pass Final IDML Deliverable Generation
+- **Symptom:** The final output directory contained duplicate intermediate files (`<ISBN>_injected.idml` and `<ISBN>.idml`).
+- **Resolution:** Cleaned export routines in `export_stage.py` and injection helpers to save the final IDML directly to its standardized ISBN name in a single pass without leaving lingering `*_injected.idml` files.
+
 ---
 
 ## Publishing Specifications & Standard Matrix
@@ -338,6 +373,7 @@ Analyzes page balance across all body pages:
 | **Heading Font** | Gill Sans MT, Bold, 16 pt | `AppliedFont = "Gill Sans MT"`, `PointSize = 16`, `Leading = 20` |
 | **Chapter Top Gap** | 14.5 pt (`y0 = 86.04 pt`) | Spacer PSR + `SpaceBefore = 14.5 pt`, `SpaceAfter = 30 pt` |
 | **Max Frame Bottom** | 558 pt (Margin Bottom: 558 pt) | Geometric bounds capped at 558 pt; 0 footer collisions |
+| **Title Page Logo** | Directly above bottom margin line ($y = 557.41\text{ pt}$) | `ItemTransform = "1 0 0 1 198.5325489776247 234.0"` |
 | **Footer Line** | Running header/footer at y = 576.45 pt | Defined on `A-Master`; isolated from frontmatter |
 | **TOC Leader** | Right-aligned dot leader (`. . . .`) at 324 pt | `TabList` RightAlign tab at position `324` with leader `.` |
 | **Content Start** | Always Recto (Page 7 or next Odd) | Automated post-TOC blank page balancing |
