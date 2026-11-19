@@ -495,6 +495,11 @@ def convert_batch(
                     final_idml_path = idml_file.parent / f"{pdf_base}.idml"
                     if final_idml_path != idml_file:
                         shutil.copy2(idml_file, final_idml_path)
+                        if idml_file.exists() and idml_file.name.endswith("_injected.idml"):
+                            try:
+                                idml_file.unlink()
+                            except Exception:
+                                pass
                         print(f"      [Final IDML] Saved: {final_idml_path.name}")
                 except Exception:
                     pass
@@ -503,7 +508,8 @@ def convert_batch(
                 # folder next to idml_files/. Each copy is independent so one failure
                 # never skips the others (no hard-coded machine paths).
                 _renamed_dir = idml_file.parent.parent / "renamed_output_files"
-                for _src, _name in ((idml_file, f"{pdf_base}.idml"),):
+                _final_src = final_idml_path if final_idml_path.exists() else idml_file
+                for _src, _name in ((_final_src, f"{pdf_base}.idml"),):
                     try:
                         if Path(_src).exists():
                             _renamed_dir.mkdir(parents=True, exist_ok=True)

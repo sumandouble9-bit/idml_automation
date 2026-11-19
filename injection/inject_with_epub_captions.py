@@ -126,14 +126,33 @@ class EpubInjector:
         keep_js = "[" + ",".join(kl) + "]"
         return self.app.DoScript(js.split_packed_js(keep_js), JS_LANG)
 
+    def _get_target_output_base(self, clean_base):
+        """Resolves the renamed ISBN format ({Sr_No}_{Print_ISBN}), or falls back to clean_base."""
+        try:
+            from book_workflow.core.isbn_manager import get_output_base_name
+            res = get_output_base_name(clean_base)
+            if res:
+                return res
+        except Exception:
+            try:
+                from core.isbn_manager import get_output_base_name
+                res = get_output_base_name(clean_base)
+                if res:
+                    return res
+            except Exception:
+                pass
+        return clean_base
+
     def _already_injected(self, idml_path, clean_base, base_name):
         """True when a fresh injected IDML already exists and $INJECT_FORCE is not set."""
-        already = os.path.join(self.output_idml_dir, f"{clean_base}_injected.idml")
-        if not os.path.exists(already):
-            already = os.path.join(self.output_idml_dir, f"{base_name}_injected.idml")
         if os.environ.get("INJECT_FORCE", "0") == "1":
             return False
-        return os.path.exists(already) and os.path.getmtime(already) >= os.path.getmtime(idml_path)
+        out_base = self._get_target_output_base(clean_base)
+        for cand in (f"{out_base}.idml", f"{clean_base}.idml", f"{clean_base}_injected.idml", f"{base_name}_injected.idml"):
+            already = os.path.join(self.output_idml_dir, cand)
+            if os.path.exists(already) and os.path.getmtime(already) >= os.path.getmtime(idml_path):
+                return True
+        return False
 
     def _extract_epub(self, clean_base, base_name, current_image_folder):
         """Extract the matching EPUB's images and caption data; return (caption_map, caption_styles)."""
@@ -479,7 +498,8 @@ class EpubInjector:
 
         current_image_folder = os.path.join(self.base_image_dir, clean_base)
         caption_map, caption_styles = self._extract_epub(clean_base, base_name, current_image_folder)
-        output_idml = os.path.join(self.output_idml_dir, f"{clean_base}_injected.idml")
+        out_base = self._get_target_output_base(clean_base)
+        output_idml = os.path.join(self.output_idml_dir, f"{out_base}.idml")
 
         doc_temp_dir = os.path.join(self.output_dir, "_resized", clean_base)
         if os.path.exists(doc_temp_dir):
@@ -502,6 +522,12 @@ class EpubInjector:
         self._resolve_overset(base_name, filename)
         self._finalize_layout(input_pages, clean_base)
         self._export(output_idml, fail_count)
+        old_inj = os.path.join(self.output_idml_dir, f"{clean_base}_injected.idml")
+        if os.path.exists(old_inj) and os.path.abspath(old_inj) != os.path.abspath(output_idml):
+            try:
+                os.remove(old_inj)
+            except Exception:
+                pass
         self.app = unpin_document(self.app)
         return True
 

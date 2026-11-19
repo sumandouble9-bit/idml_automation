@@ -52,7 +52,16 @@ class AssetInjectionStage(WorkflowStage):
         print(f"Target directory: {self.paths.final_idml_dir}\n{line}")
 
         from ..core.chapter_break_format import apply_to_idml as fix_chapter_breaks
-        stems = {book.stem for book in books}
+        from ..core.isbn_manager import get_output_base_name
+        stems = set()
+        for book in books:
+            stems.add(book.stem)
+            out_base = get_output_base_name(book.stem)
+            if out_base:
+                stems.add(out_base)
+            prefix = book.stem.split("_")[0]
+            if prefix:
+                stems.add(prefix)
         targets = [f for f in self.paths.final_idml_dir.glob("*.idml")
                    if any(stem in f.name for stem in stems) and not f.name.endswith(".tmp")]
         total = len(targets)
@@ -60,8 +69,11 @@ class AssetInjectionStage(WorkflowStage):
             try:
                 caption_map = None
                 for book in books:
-                    if book.stem in idml.name:
+                    if book.stem in idml.name or book.stem.split("_")[0] in idml.name:
                         epub_cands = list(self.paths.epub_dir.glob(f"*{book.stem}*.epub"))
+                        if not epub_cands:
+                            prefix = book.stem.split("_")[0]
+                            epub_cands = list(self.paths.epub_dir.glob(f"*{prefix}*.epub"))
                         if epub_cands:
                             try:
                                 from injection import epub_tools
@@ -76,7 +88,16 @@ class AssetInjectionStage(WorkflowStage):
 
     def balance_tables(self, books):
         from table.table_column_balancer import balance_idml_tables
-        stems = {book.stem for book in books}
+        from ..core.isbn_manager import get_output_base_name
+        stems = set()
+        for book in books:
+            stems.add(book.stem)
+            out_base = get_output_base_name(book.stem)
+            if out_base:
+                stems.add(out_base)
+            prefix = book.stem.split("_")[0]
+            if prefix:
+                stems.add(prefix)
         targets = [f for f in self.paths.final_idml_dir.glob("*.idml")
                    if any(stem in f.name for stem in stems) and not f.name.endswith(".tmp")]
         for idml in targets:

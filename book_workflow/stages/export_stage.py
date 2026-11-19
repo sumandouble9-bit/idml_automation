@@ -13,10 +13,22 @@ class QualityAuditAndExportStage(WorkflowStage):
     title = "STEP 4: HIGH-QUALITY PRINT PDF EXPORT & QUALITY AUDIT (via Adobe InDesign)"
 
     def _target_idmls(self, stems):
-        injected = [f for f in self.paths.final_idml_dir.glob("*_injected.idml")
-                    if any(stem in f.name for stem in stems)]
-        if injected:
-            return injected
+        from ..core.isbn_manager import get_output_base_name
+        expanded_stems = set(stems)
+        for s in stems:
+            ob = get_output_base_name(s)
+            if ob:
+                expanded_stems.add(ob)
+            prefix = s.split("_")[0]
+            if prefix:
+                expanded_stems.add(prefix)
+
+        all_final = [f for f in self.paths.final_idml_dir.glob("*.idml")
+                     if not f.name.endswith(".tmp") and not f.name.startswith("~")]
+        matched_final = [f for f in all_final if any(stem in f.name for stem in expanded_stems)]
+        if matched_final:
+            return matched_final
+
         normalized = [f for f in self.paths.norm_dir.glob("*_normalized.idml")
                       if any(stem in f.name for stem in stems)]
         if normalized:
@@ -210,9 +222,18 @@ class QualityAuditAndExportStage(WorkflowStage):
                 else:
                     print(f"  [TOC Verified] {idml.name} TOC is 100% in sync with {pdf.name}.")
             if base_out:
+                final_target = self.paths.final_idml_dir / f"{base_out}.idml"
+                if idml != final_target and idml.exists():
+                    shutil.copy2(idml, final_target)
+                    if idml.name.endswith("_injected.idml"):
+                        try:
+                            idml.unlink()
+                        except Exception:
+                            pass
                 renamed_dir = self.paths.final_output_root / "renamed_output_files"
                 renamed_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(idml, renamed_dir / f"{base_out}.idml")
+                target_src = final_target if final_target.exists() else idml
+                shutil.copy2(target_src, renamed_dir / f"{base_out}.idml")
                 print(f"  [Renamed IDML] Saved {base_out}.idml into renamed_output_files/")
 
 
