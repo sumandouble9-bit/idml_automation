@@ -41,7 +41,8 @@ def _is_publisher_imprint(txt: str) -> bool:
 
 def _extract_title_parts(psrs):
     """
-    Extracts (title, subtitle, by, author, epigraph, is_epigraph_bold, front_psrs) from front paragraphs.
+    Extracts (title, subtitle, by, author, author_notes, epigraph, is_epigraph_bold, front_psrs)
+    from front paragraphs in their natural sequential order.
     Front paragraphs end when verso/copyright is encountered.
     """
     front_psrs = []
@@ -64,67 +65,64 @@ def _extract_title_parts(psrs):
     subtitle = ""
     by = "by"
     author = ""
+    author_notes = ""
     epigraph = ""
     is_epigraph_bold = False
 
-    non_quote_psrs = []
+    valid_psrs = []
     for psr in front_psrs:
-        style = psr.attrib.get("AppliedParagraphStyle", "").lower()
         txt = content_text(psr).strip()
         if not txt or _is_publisher_imprint(txt):
             continue
-        # Detect explicit quotes or verse/poetry/epigraph paragraphs
-        if any(k in style for k in ["quote", "epigraph", "block"]) or (
-            re.search(r"[\u2013\u2014\-]\s*[A-Z]{3,}", txt) and not re.match(r"^by\b", txt, re.I)
-        ):
-            if not epigraph:
-                epigraph = txt
-            else:
-                epigraph += "\u2028" + txt
-            if any(c.attrib.get("FontStyle") == "Bold" for c in psr.iter()):
-                is_epigraph_bold = True
-        else:
-            non_quote_psrs.append(psr)
+        valid_psrs.append(psr)
 
-    if non_quote_psrs:
-        p0_text = content_text(non_quote_psrs[0]).strip()
-        if len(non_quote_psrs) == 1:
-            lines = [x.strip() for x in re.split(r"[\u2028\r\n]+", p0_text) if x.strip()]
-            title = lines[0] if lines else ""
-            for line in lines[1:]:
-                if _is_publisher_imprint(line):
-                    continue
-                if re.match(r"^by\b", line, re.I):
-                    by_part = re.sub(r"^by[:\s]*", "", line, flags=re.I).strip()
-                    if by_part:
-                        author = by_part
-                elif not author:
-                    author = line
-                elif not epigraph and not _is_publisher_imprint(line):
-                    epigraph = line
-        else:
-            title = p0_text
-            for psr in non_quote_psrs[1:]:
-                txt = content_text(psr).strip()
-                if not txt or _is_publisher_imprint(txt):
-                    continue
-                if re.match(r"^by\b", txt, re.I) or "author" in psr.attrib.get("AppliedParagraphStyle", "").lower():
+    if len(valid_psrs) == 1:
+        p0_text = content_text(valid_psrs[0]).strip()
+        lines = [x.strip() for x in re.split(r"[\u2028\r\n]+", p0_text) if x.strip()]
+        title = lines[0] if lines else ""
+        for line in lines[1:]:
+            if _is_publisher_imprint(line):
+                continue
+            if re.match(r"^by\b", line, re.I):
+                by_part = re.sub(r"^by[:\s]*", "", line, flags=re.I).strip()
+                if by_part:
+                    author = by_part
+            elif not author:
+                author = line
+            elif not epigraph:
+                epigraph = line
+    else:
+        for psr in valid_psrs:
+            txt = content_text(psr).strip()
+            style = psr.attrib.get("AppliedParagraphStyle", "").lower()
+
+            if not title:
+                title = txt
+            elif not author:
+                if re.match(r"^by\b", txt, re.I) or "author" in style:
                     by_part = re.sub(r"^by[:\s]*", "", txt, flags=re.I).strip()
-                    if by_part:
-                        author = by_part
+                    author = by_part if by_part else txt
                     by = "by"
-                elif not author:
-                    if not subtitle:
-                        subtitle = txt
-                    else:
-                        author = txt
                 else:
+                    subtitle = txt if not subtitle else subtitle + "\u2028" + txt
+            else:
+                is_quote = any(k in style for k in ["quote", "epigraph", "block"]) or (
+                    re.search(r"[\u2013\u2014\-]\s*[A-Z]{3,}", txt) and not re.match(r"^by\b", txt, re.I)
+                )
+                if is_quote or epigraph:
                     if not epigraph:
                         epigraph = txt
                     else:
                         epigraph += "\u2028" + txt
+                    if any(c.attrib.get("FontStyle") == "Bold" for c in psr.iter()):
+                        is_epigraph_bold = True
+                else:
+                    if not author_notes:
+                        author_notes = txt
+                    else:
+                        author_notes += "\u2028" + txt
 
-    return title, subtitle, by, author, epigraph, is_epigraph_bold, front_psrs
+    return title, subtitle, by, author, author_notes, epigraph, is_epigraph_bold, front_psrs
 
 
 def find_reference_title_story(reference_dir):
@@ -219,6 +217,7 @@ def apply(target_dir, reference_dir):
         subtitle,
         by_text,
         author_name,
+        author_notes,
         epigraph_quote,
         is_epigraph_bold,
         old_front_psrs,
@@ -334,7 +333,32 @@ def apply(target_dir, reference_dir):
         if a_content is not None:
             a_content.text = author_name
 
-    # PSR 4: Epigraph / Quote / Verse (quotes_normal style, Palatino Linotype 10pt Italic)
+    # PSR 4: Author Notes / Sub-credits (centre_align style, Times New Roman 11pt)
+    if author_notes:
+        an_psr = ET.SubElement(story_elem, "ParagraphStyleRange", {
+            "AppliedParagraphStyle": "ParagraphStyle/centre_align",
+            "Justification": "CenterAlign",
+            "FirstLineIndent": "0",
+            "LeftIndent": "0",
+            "RightIndent": "0",
+            "SpaceBefore": "8",
+            "SpaceAfter": "4",
+        })
+        an_csr = ET.SubElement(an_psr, "CharacterStyleRange", {
+            "AppliedCharacterStyle": r"CharacterStyle/$ID/[No character style]",
+            "FontStyle": "Regular",
+            "PointSize": "11",
+        })
+        props = ET.SubElement(an_csr, "Properties")
+        af = ET.SubElement(props, "AppliedFont", {"type": "string"})
+        af.text = "Times New Roman"
+        ld = ET.SubElement(props, "Leading", {"type": "unit"})
+        ld.text = "14"
+        cnt = ET.SubElement(an_csr, "Content")
+        cnt.text = author_notes
+        ET.SubElement(an_csr, "Br")
+
+    # PSR 5: Epigraph / Quote / Verse (quotes_normal style, Palatino Linotype 10pt Italic)
     if epigraph_quote:
         q_psr = ET.SubElement(story_elem, "ParagraphStyleRange", {
             "AppliedParagraphStyle": "ParagraphStyle/quotes_normal",
@@ -461,6 +485,7 @@ def apply(target_dir, reference_dir):
     styles_to_copy = {
         "ParagraphStyle/main_page_title",
         "ParagraphStyle/author_name",
+        "ParagraphStyle/centre_align",
         "ParagraphStyle/quotes_normal",
         "CharacterStyle/italic",
     }

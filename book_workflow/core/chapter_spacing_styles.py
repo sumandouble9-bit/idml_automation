@@ -321,15 +321,15 @@ def format_title_story(story_xml_bytes: bytes, target_by_baseline: float = 374.0
             
     if has_text_below_author and extra_lines > 0:
         # Dynamic calculation:
-        # Logo top in page coordinates is ~511.65 pt.
-        # Desired gap between text bottom and logo top: ~65-70 pt -> max text bottom = 446.65 pt.
+        # Logo top in page coordinates is ~529.65 pt.
+        # Desired gap between text bottom and logo top: ~85-90 pt -> max text bottom = 440.0 pt.
         # Vertical space below 'by/por' baseline:
         #   - 'by/por' to author baseline: 26.2 pt
         #   - author to extra text gap: 14.0 pt
         #   - extra text height: extra_lines * 13.5 pt leading
         #   - last line descender: ~4.0 pt
         height_below_by = 26.2 + 14.0 + (extra_lines * 13.5) + 4.0
-        needed_target_by = 446.65 - height_below_by
+        needed_target_by = 440.0 - height_below_by
         # Position 'by/por' so text ends safely above logo, but not below default 374.0 pt,
         # and leave at least 40 pt gap below the title
         target_by = min(target_by_baseline, max(estimated_last_baseline + 40.0, needed_target_by))
@@ -348,6 +348,9 @@ def format_title_story(story_xml_bytes: bytes, target_by_baseline: float = 374.0
         ap.set("Hyphenation", "false")
         if idx == 0:
             ap.set("SpaceBefore", "0")
+        elif "centre_align" in ap.attrib.get("AppliedParagraphStyle", ""):
+            # Subtitle / author sub-credit hugs author line closely
+            ap.set("SpaceBefore", "8")
         else:
             # Paragraphs below author (quotes/epigraphs): clean 14pt gap below author
             ap.set("SpaceBefore", "14")

@@ -63,7 +63,7 @@ def _build_cache():
     _zbytes = None
     try:
         _req = urllib.request.Request(SHEET_XLSX_URL, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(_req, timeout=30) as _resp:
+        with urllib.request.urlopen(_req, timeout=3) as _resp:
             _zbytes = _resp.read()
         print("[ISBN Manager] Loaded ISBN metadata from Google Sheet.")
     except Exception as e:
