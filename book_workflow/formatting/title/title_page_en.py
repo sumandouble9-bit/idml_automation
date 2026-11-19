@@ -152,7 +152,7 @@ def find_reference_title_story(reference_dir):
 def _update_or_clone_polygon(sp_root, reference_dir):
     """
     Ensures Spread 1 has the publisher logo Polygon at
-    ItemTransform="1 0 0 1 198.5325489776247 225.34730737762473"
+    ItemTransform="1 0 0 1 198.5325489776247 234.0" (fixed just above bottom margin line)
     with correct path points matching reference.
     """
     poly = next((e for e in sp_root.iter() if lname(e.tag) == "Polygon"), None)
@@ -177,7 +177,7 @@ def _update_or_clone_polygon(sp_root, reference_dir):
     ]
 
     if poly is not None:
-        poly.set("ItemTransform", "1 0 0 1 198.5325489776247 220.0")
+        poly.set("ItemTransform", "1 0 0 1 198.5325489776247 234.0")
         ppa = next((e for e in poly.iter() if lname(e.tag) == "PathPointArray"), None)
         if ppa is not None:
             pts = [c for c in ppa if lname(c.tag) == "PathPointType"]
@@ -198,6 +198,7 @@ def _update_or_clone_polygon(sp_root, reference_dir):
     elif ref_poly is not None:
         # Clone reference polygon into spread
         new_poly = copy.deepcopy(ref_poly)
+        new_poly.set("ItemTransform", "1 0 0 1 198.5325489776247 234.0")
         spread_elem = next((e for e in sp_root.iter() if lname(e.tag) == "Spread"), sp_root)
         spread_elem.append(new_poly)
         return "cloned"
@@ -337,11 +338,11 @@ def apply(target_dir, reference_dir):
     if epigraph_quote:
         q_psr = ET.SubElement(story_elem, "ParagraphStyleRange", {
             "AppliedParagraphStyle": "ParagraphStyle/quotes_normal",
-            "Justification": "LeftAlign",
+            "Justification": "CenterAlign",
             "FirstLineIndent": "0",
-            "LeftIndent": "18",
-            "RightIndent": "18",
-            "SpaceBefore": "24",
+            "LeftIndent": "0",
+            "RightIndent": "0",
+            "SpaceBefore": "14",
             "SpaceAfter": "6",
         })
         q_csr = ET.SubElement(q_psr, "CharacterStyleRange", {

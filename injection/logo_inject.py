@@ -17,15 +17,26 @@ def inject_logo(app, logo_path):
         }
     }
 
-    // 2) For each logo frame: fit the logo fully INSIDE the original frame. The
-    //    frame's position, width and height are left exactly as the template had
-    //    them -- nothing is moved or resized.
+    // 2) For each logo frame: align Page 1 logo to bottom margin line,
+    //    and fit the logo fully INSIDE the frame with no border.
     var done = 0;
     for (var i = 0; i < doc.allGraphics.length; i++){
         try {
             var g = doc.allGraphics[i];
             if (!g.itemLink || !isLogoName(g.itemLink.name)) continue;   // ONLY logos
             var frm = g.parent;
+            // On Page 1 (Title page), ensure the logo sits right above the bottom margin line
+            try {
+                var pg = frm.parentPage;
+                if (pg && pg.name == "1") {
+                    var gb = frm.geometricBounds; // [top, left, bottom, right]
+                    var frmH = gb[2] - gb[0];
+                    var pgBottom = pg.bounds[2];
+                    var botMargin = pg.marginPreferences.bottom;
+                    var targetBottom = pgBottom - botMargin;
+                    frm.geometricBounds = [targetBottom - frmH, gb[1], targetBottom, gb[3]];
+                }
+            } catch(ePos) {}
             try { frm.fit(FitOptions.PROPORTIONALLY); } catch(e1){}      // whole logo inside the frame
             try { frm.fit(FitOptions.CENTER_CONTENT); } catch(e2){}      // centred in the frame
             try { frm.strokeWeight = 0; } catch(e3){}                    // no border

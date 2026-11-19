@@ -141,6 +141,12 @@ def update_spreads_geometry(files: dict) -> None:
             
             # Title Page (Page 1)
             if "1" in pages:
+                # Ensure publisher logo Polygon is fixed just above the bottom margin line
+                for poly in root.iter():
+                    if _lname(poly.tag) == "Polygon":
+                        poly.set("ItemTransform", "1 0 0 1 198.5325489776247 234.0")
+                        changed = True
+
                 for tf in root.iter():
                     if _lname(tf.tag) == "TextFrame":
                         story = tf.attrib.get("ParentStory", "")
@@ -291,19 +297,60 @@ def format_title_story(story_xml_bytes: bytes, target_by_baseline: float = 374.0
     lines = max(1, min(lines, 4))
     estimated_last_baseline = 145.8 + (lines - 1) * 32.0
     
-    # Calculate SpaceBefore so that by/por lands at target_by_baseline (~374 pt)
-    # baseline = last_title_baseline + font_descent (~4) + SpaceBefore + font_ascent (~12)
-    # SpaceBefore = target_by_baseline - estimated_last_baseline - 16
-    calculated_sb = max(60.0, target_by_baseline - estimated_last_baseline - 16.0)
+    # Check if any text is coming below the author name
+    has_text_below_author = False
+    extra_lines = 0
+    
+    # 1. Any paragraphs after author_psrs[0] (quotes, epigraphs, subtitle credits)
+    if len(author_psrs) > 1:
+        for ep in author_psrs[1:]:
+            ep_txt = "".join(e.text or "" for e in ep.iter() if _lname(e.tag) == "Content").strip()
+            if ep_txt:
+                has_text_below_author = True
+                raw_lines = [l.strip() for l in re.split(r"[\u2028\r\n]+", ep_txt) if l.strip()]
+                for rl in raw_lines:
+                    extra_lines += max(1, (len(rl) + 51) // 52)
+                    
+    # 2. Check if author_psrs[0] itself has multiple lines (e.g. notes below author)
+    if author_psrs:
+        a0_txt = "".join(e.text or "" for e in author_psrs[0].iter() if _lname(e.tag) == "Content").strip()
+        a0_lines = [l.strip() for l in re.split(r"[\u2028\r\n]+", a0_txt) if l.strip()]
+        if len(a0_lines) > 1:
+            has_text_below_author = True
+            extra_lines += (len(a0_lines) - 1)
+            
+    if has_text_below_author and extra_lines > 0:
+        # Dynamic calculation:
+        # Logo top in page coordinates is ~511.65 pt.
+        # Desired gap between text bottom and logo top: ~65-70 pt -> max text bottom = 446.65 pt.
+        # Vertical space below 'by/por' baseline:
+        #   - 'by/por' to author baseline: 26.2 pt
+        #   - author to extra text gap: 14.0 pt
+        #   - extra text height: extra_lines * 13.5 pt leading
+        #   - last line descender: ~4.0 pt
+        height_below_by = 26.2 + 14.0 + (extra_lines * 13.5) + 4.0
+        needed_target_by = 446.65 - height_below_by
+        # Position 'by/por' so text ends safely above logo, but not below default 374.0 pt,
+        # and leave at least 40 pt gap below the title
+        target_by = min(target_by_baseline, max(estimated_last_baseline + 40.0, needed_target_by))
+        calculated_sb = max(35.0, target_by - estimated_last_baseline - 16.0)
+    else:
+        # No text below author: do NOT adjust spacing (standard baseline ~374 pt)
+        target_by = target_by_baseline
+        calculated_sb = max(60.0, target_by - estimated_last_baseline - 16.0)
     
     by_psr.set("SpaceBefore", f"{calculated_sb:.1f}")
     by_psr.set("Justification", "CenterAlign")
     by_psr.set("Hyphenation", "false")
     
-    for ap in author_psrs:
-        ap.set("SpaceBefore", "0")
+    for idx, ap in enumerate(author_psrs):
         ap.set("Justification", "CenterAlign")
         ap.set("Hyphenation", "false")
+        if idx == 0:
+            ap.set("SpaceBefore", "0")
+        else:
+            # Paragraphs below author (quotes/epigraphs): clean 14pt gap below author
+            ap.set("SpaceBefore", "14")
         
     # Rebuild story
     new_children = []

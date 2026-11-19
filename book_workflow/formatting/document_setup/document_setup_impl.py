@@ -239,7 +239,7 @@ def apply_spreads_and_pages(target_dir):
         if len(pages) == 1 and pages[0].attrib.get("Name") == "1":
             for poly in root.iter():
                 if lname(poly.tag) == "Polygon":
-                    poly.set("ItemTransform", "1 0 0 1 198.5325489776247 220.0")
+                    poly.set("ItemTransform", "1 0 0 1 198.5325489776247 234.0")
                     ppa = next((e for e in poly.iter() if lname(e.tag) == "PathPointArray"), None)
                     if ppa is not None:
                         target_pts = [
