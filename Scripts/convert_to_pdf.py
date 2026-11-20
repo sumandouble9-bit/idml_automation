@@ -84,6 +84,50 @@ def release_pdf_lock(filepath: Path):
             pass
 
 
+def get_justification_spacing_js(
+    min_word_pct: int = 95,
+    des_word_pct: int = 100,
+    max_word_pct: int = 120,
+    min_letter_pct: int = -1,
+    des_letter_pct: int = 0,
+    max_letter_pct: int = 4,
+) -> str:
+    """Return ExtendScript snippet to enforce bounded word and letter spacing for justified body styles.
+
+    Constrains minimum word spacing to 95% (restricting compression difference to -0.10 pt to -0.12 pt
+    from natural 2.41 pt space for Palatino Linotype 9.65 pt) so words are never crowded together.
+    """
+    return f"""
+    try {{
+        var _justBody = ["Normal","NormalParagraphStyle","[Normal Paragraph Style]","[Basic Paragraph]","body_text","noindent","noindentj","noindent1","bodytext_noendent","bodytext_Noendent","copybody"];
+        for (var _j = 0; _j < _justBody.length; _j++) {{
+            var _bs = doc.paragraphStyles.itemByName(_justBody[_j]);
+            if (_bs && _bs.isValid) {{
+                try {{ _bs.justification = Justification.LEFT_JUSTIFIED; }} catch(e1) {{}}
+                try {{ _bs.hyphenation = true; }} catch(e2) {{}}
+                try {{ _bs.minimumWordSpacing = {min_word_pct}; _bs.desiredWordSpacing = {des_word_pct}; _bs.maximumWordSpacing = {max_word_pct}; }} catch(e3) {{}}
+                try {{ _bs.minimumLetterSpacing = {min_letter_pct}; _bs.desiredLetterSpacing = {des_letter_pct}; _bs.maximumLetterSpacing = {max_letter_pct}; }} catch(e4) {{}}
+            }}
+        }}
+        var _justBlock = ["quotes_normal","block1","block","block2"];
+        for (var _qb = 0; _qb < _justBlock.length; _qb++) {{
+            var _bsq = doc.paragraphStyles.itemByName(_justBlock[_qb]);
+            if (_bsq && _bsq.isValid) {{ try {{ _bsq.justification = Justification.LEFT_JUSTIFIED; }} catch(e5b) {{}} }}
+        }}
+        var _justRag = ["verse","poem"];
+        for (var _q = 0; _q < _justRag.length; _q++) {{
+            var _rs = doc.paragraphStyles.itemByName(_justRag[_q]);
+            if (_rs && _rs.isValid) {{ try {{ _rs.justification = Justification.LEFT_ALIGN; }} catch(e5) {{}} }}
+        }}
+        var _noHyph = ["chapter_name","chapter_name01","master_chapter_name","Sub-heading","after_chapter_name_heading","section_heading","Heading 1"];
+        for (var _h = 0; _h < _noHyph.length; _h++) {{
+            var _hs = doc.paragraphStyles.itemByName(_noHyph[_h]);
+            if (_hs && _hs.isValid) {{ try {{ _hs.hyphenation = false; }} catch(e6) {{}} }}
+        }}
+    }} catch(eJust) {{}}
+    """
+
+
 def convert_single_idml(app, idml_path: Path, output_pdf_path: Path) -> dict:
     """Converts a single IDML file to High Quality Print PDF."""
     try:
@@ -170,33 +214,7 @@ def convert_single_idml(app, idml_path: Path, output_pdf_path: Path) -> dict:
         }}
     }} catch(eHls) {{}}
 
-    try {{
-        var _justBody = ["Normal","NormalParagraphStyle","[Normal Paragraph Style]","[Basic Paragraph]","body_text","noindent","noindentj","noindent1","bodytext_noendent","bodytext_Noendent","copybody"];
-        for (var _j = 0; _j < _justBody.length; _j++) {{
-            var _bs = doc.paragraphStyles.itemByName(_justBody[_j]);
-            if (_bs && _bs.isValid) {{
-                try {{ _bs.justification = Justification.LEFT_JUSTIFIED; }} catch(e1) {{}}
-                try {{ _bs.hyphenation = true; }} catch(e2) {{}}
-                try {{ _bs.minimumWordSpacing = 80; _bs.desiredWordSpacing = 100; _bs.maximumWordSpacing = 120; }} catch(e3) {{}}
-                try {{ _bs.minimumLetterSpacing = -2; _bs.desiredLetterSpacing = 0; _bs.maximumLetterSpacing = 5; }} catch(e4) {{}}
-            }}
-        }}
-        var _justBlock = ["quotes_normal","block1","block","block2"];
-        for (var _qb = 0; _qb < _justBlock.length; _qb++) {{
-            var _bsq = doc.paragraphStyles.itemByName(_justBlock[_qb]);
-            if (_bsq && _bsq.isValid) {{ try {{ _bsq.justification = Justification.LEFT_JUSTIFIED; }} catch(e5b) {{}} }}
-        }}
-        var _justRag = ["verse","poem"];
-        for (var _q = 0; _q < _justRag.length; _q++) {{
-            var _rs = doc.paragraphStyles.itemByName(_justRag[_q]);
-            if (_rs && _rs.isValid) {{ try {{ _rs.justification = Justification.LEFT_ALIGN; }} catch(e5) {{}} }}
-        }}
-        var _noHyph = ["chapter_name","chapter_name01","master_chapter_name","Sub-heading","after_chapter_name_heading","section_heading","Heading 1"];
-        for (var _h = 0; _h < _noHyph.length; _h++) {{
-            var _hs = doc.paragraphStyles.itemByName(_noHyph[_h]);
-            if (_hs && _hs.isValid) {{ try {{ _hs.hyphenation = false; }} catch(e6) {{}} }}
-        }}
-    }} catch(eJust) {{}}
+    {get_justification_spacing_js()}
 
     // Guard paragraphs containing soft breaks (line separator or newline) or poems/index from being justified across full width
     try {{

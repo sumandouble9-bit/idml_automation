@@ -150,12 +150,13 @@ def update_styles_xml(target_dir, reference_dir):
                 # Uniform word spacing (no stretched spaces); justify via letter
                 # spacing + hyphenation (matches the English pipeline).
                 cs.set("Justification", "LeftJustified")
-                cs.set("MinimumWordSpacing", "80")
+                # Bound word spacing compression to -0.10 pt to -0.12 pt difference
+                cs.set("MinimumWordSpacing", "95")
                 cs.set("DesiredWordSpacing", "100")
                 cs.set("MaximumWordSpacing", "120")
-                cs.set("MinimumLetterSpacing", "0")
+                cs.set("MinimumLetterSpacing", "-1")
                 cs.set("DesiredLetterSpacing", "0")
-                cs.set("MaximumLetterSpacing", "0")
+                cs.set("MaximumLetterSpacing", "4")
                 cs.set("MinimumGlyphScaling", "100")
                 cs.set("DesiredGlyphScaling", "100")
                 cs.set("MaximumGlyphScaling", "100")

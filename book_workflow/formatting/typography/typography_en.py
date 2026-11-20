@@ -159,12 +159,14 @@ def update_styles_xml(target_dir, reference_dir):
                     # Uniform word spacing (no stretched spaces); justify via character
                     # spacing + hyphenation. Applied to the BODY style only, so poems,
                     # quotes and centered text (other styles) are never affected.
-                    ps.set("MinimumWordSpacing", "80")
+                    # Bound word spacing compression to -0.10 pt to -0.12 pt difference
+                    # from natural space (95% minimum for Palatino Linotype 9.65 pt).
+                    ps.set("MinimumWordSpacing", "95")
                     ps.set("DesiredWordSpacing", "100")
                     ps.set("MaximumWordSpacing", "120")
-                    ps.set("MinimumLetterSpacing", "-2")
+                    ps.set("MinimumLetterSpacing", "-1")
                     ps.set("DesiredLetterSpacing", "0")
-                    ps.set("MaximumLetterSpacing", "5")
+                    ps.set("MaximumLetterSpacing", "4")
                     ps.set("MinimumGlyphScaling", "100")
                     ps.set("DesiredGlyphScaling", "100")
                     ps.set("MaximumGlyphScaling", "100")

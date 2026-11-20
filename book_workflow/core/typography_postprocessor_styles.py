@@ -53,12 +53,13 @@ def enforce_styles_xml(tmp_dir, stats):
                         ps.set("FirstLineIndent", "18")
                         ps.set("SpaceBefore", "1.5")
                         ps.set("SpaceAfter", "3")
-                        ps.set("MinimumWordSpacing", "80")
+                        # Bound word spacing compression to -0.10 pt to -0.12 pt difference
+                        ps.set("MinimumWordSpacing", "95")
                         ps.set("DesiredWordSpacing", "100")
                         ps.set("MaximumWordSpacing", "120")
-                        ps.set("MinimumLetterSpacing", "0")
+                        ps.set("MinimumLetterSpacing", "-1")
                         ps.set("DesiredLetterSpacing", "0")
-                        ps.set("MaximumLetterSpacing", "0")
+                        ps.set("MaximumLetterSpacing", "4")
                         ps.set("Hyphenation", "true")
                     stats["styles_updated"] += 1
                 elif sid == "ParagraphStyle/fig caption":
