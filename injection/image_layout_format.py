@@ -266,17 +266,26 @@ def format_image_layout(app):
                 bb = frm.geometricBounds;             // refresh after resize
             }
 
-            // (b) Clamp POSITION: an image that fits in size can still be
-            // SHIFTED so its frame spills past a margin (e.g. right edge 9pt
-            // beyond the right margin). How we fix it depends on whether the
-            // image is ANCHORED (inline) or PAGE-FIXED.
+            // (b) Clamp POSITION: only PAGE-FIXED frames can be nudged back inside
+            // the margin box. Anchored/inline frames flow with the text column and
+            // must NEVER be nudged via geometricBounds, as modifying geometricBounds
+            // on an anchored frame detaches the frame boundary from the inner image.
+            var isAnc = false;
+            try {
+                var p = frm.parent;
+                if (p) {
+                    var pcn = p.constructor.name;
+                    if (pcn === "Character" || pcn === "Story" || pcn === "Cell" || pcn === "XmlStory") isAnc = true;
+                    if (pcn !== "Spread" && pcn !== "Page") isAnc = true;
+                }
+                if (frm.anchoredObjectSettings && frm.anchoredObjectSettings.isValid) isAnc = true;
+            } catch (eAnc) {}
+            if (isAnc) continue;
+
             var cbb = frm.geometricBounds;
             var overR = cbb[3] > mb.right + 1, overL = cbb[1] < mb.left - 1;
             var overB = cbb[2] > mb.bottom + 1, overT = cbb[0] < mb.top - 1;
             if (overR || overL || overB || overT) {
-                // Page-fixed frames can be nudged back inside the margin box.
-                // (Anchored/in-cell images do not respond to geometricBounds moves --
-                // those are centred in their cells by center_images_in_cells().)
                 var dx = 0, dy = 0;
                 if (overR)      dx = mb.right - cbb[3];
                 else if (overL) dx = mb.left  - cbb[1];
@@ -364,6 +373,35 @@ def format_image_layout(app):
                 rowsFixed++;
             }
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Pass 4: Safety verification. If any graphic's content was somehow
+    // displaced outside its frame (overlap < 50%), re-center and fit it
+    // so it never renders blank in IDML or PDF.
+    // ------------------------------------------------------------------
+    function _ovf(g, fr) {
+        try {
+            var a = g.geometricBounds, b = fr.geometricBounds;
+            var x1 = Math.max(a[1], b[1]), y1 = Math.max(a[0], b[0]);
+            var x2 = Math.min(a[3], b[3]), y2 = Math.min(a[2], b[2]);
+            var w = x2 - x1; if (w < 0) w = 0;
+            var h = y2 - y1; if (h < 0) h = 0;
+            var ar = (a[3] - a[1]) * (a[2] - a[0]);
+            return ar > 0 ? (w * h) / ar : 1;
+        } catch (e) { return 1; }
+    }
+    for (var gi4 = 0; gi4 < doc.allGraphics.length; gi4++) {
+        try {
+            var g4 = doc.allGraphics[gi4];
+            if (!g4.itemLink || isLogo(g4.itemLink.name)) continue;
+            var fr4 = g4.parent;
+            if (_ovf(g4, fr4) < 0.5) {
+                try { fr4.fit(FitOptions.CENTER_CONTENT); } catch (eF4a) {}
+                try { fr4.fit(FitOptions.FIT_CONTENT_PROPORTIONALLY); } catch (eF4b) {}
+                try { fr4.fit(FitOptions.CENTER_CONTENT); } catch (eF4c) {}
+            }
+        } catch (eG4) {}
     }
 
     doc.viewPreferences.rulerOrigin = oldRuler;
