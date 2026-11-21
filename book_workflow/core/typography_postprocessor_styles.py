@@ -111,6 +111,15 @@ def enforce_styles_xml(tmp_dir, stats):
                 elif sid == "ParagraphStyle/quotes_normal":
                     _ensure_pstyle_font(ps, "Palatino Linotype", point_size="9.65", leading="12")
                     ps.set("Justification", "LeftJustified")
+                    ps.set("SpaceBefore", "1.5")
+                    ps.set("SpaceAfter", "3")
+                    ps.set("KeepLinesTogether", "true")
+                    ps.set("KeepFirstAndLastLines", "true")
+                    ps.set("MinLinesAtStart", "2")
+                    ps.set("MinLinesAtEnd", "2")
+                elif any(k in sid.lower() for k in ["block", "quote", "copybody", "verse", "poem", "extract"]) and not any(k in sid.lower() for k in ["chapter", "sub-heading", "heading", "toc", "author", "title", "caption"]):
+                    ps.set("SpaceBefore", "1.5")
+                    ps.set("SpaceAfter", "3")
                     ps.set("KeepLinesTogether", "true")
                     ps.set("KeepFirstAndLastLines", "true")
                     ps.set("MinLinesAtStart", "2")

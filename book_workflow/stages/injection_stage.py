@@ -106,6 +106,40 @@ class AssetInjectionStage(WorkflowStage):
             except Exception:
                 pass
 
+    def normalize_paragraph_spacing(self, books):
+        """Enforces standard normal paragraph spacing (SpaceBefore=1.5, SpaceAfter=3)
+
+        across all body and block styles in final IDML files.
+        """
+        from ..core.paragraph_spacing_manager import apply_normal_paragraph_spacing
+        from ..core.isbn_manager import get_output_base_name
+
+        line = "=" * 70
+        print(f"\n{line}\nSTEP 3f: PARAGRAPH SPACING NORMALIZATION (apply standard normal spacing)")
+        print(f"Target directory: {self.paths.final_idml_dir}\n{line}")
+
+        stems = set()
+        for book in books:
+            stems.add(book.stem)
+            out_base = get_output_base_name(book.stem)
+            if out_base:
+                stems.add(out_base)
+            prefix = book.stem.split("_")[0]
+            if prefix:
+                stems.add(prefix)
+
+        targets = [f for f in self.paths.final_idml_dir.glob("*.idml")
+                   if any(stem in f.name for stem in stems) and not f.name.endswith(".tmp")]
+
+        total = len(targets)
+        for i, idml in enumerate(targets, 1):
+            try:
+                stats = apply_normal_paragraph_spacing(idml)
+                print(f"  [{i}/{total}] {idml.name}: styles updated={stats['styles_updated']}, "
+                      f"breaks trimmed={stats['breaks_trimmed']} (SpaceBefore={stats['space_before']}, SpaceAfter={stats['space_after']})")
+            except Exception as exc:
+                print(f"  {idml.name}: [!] paragraph spacing update failed: {exc}")
+
     def fill_bottom_gaps(self, books):
         line = "=" * 70
         print(f"\n{line}\nSTEP 3b: TEXT BOTTOM-GAP FILLING (Reflow body lines down to bottom margin)")
@@ -125,6 +159,7 @@ class AssetInjectionStage(WorkflowStage):
         result.record(code == 0)
         self.fix_chapter_double_breaks(books)
         self.balance_tables(books)
+        self.normalize_paragraph_spacing(books)
         return result
 
 

@@ -64,15 +64,23 @@ def get_justification_spacing_js(
                 try {{ _bs.minimumLetterSpacing = {min_letter_pct}; _bs.desiredLetterSpacing = {des_letter_pct}; _bs.maximumLetterSpacing = {max_letter_pct}; }} catch(e4) {{}}
             }}
         }}
-        var _justBlock = ["quotes_normal","block1","block","block2"];
+        var _justBlock = ["quotes_normal"];
         for (var _qb = 0; _qb < _justBlock.length; _qb++) {{
             var _bsq = doc.paragraphStyles.itemByName(_justBlock[_qb]);
             if (_bsq && _bsq.isValid) {{ try {{ _bsq.justification = Justification.LEFT_JUSTIFIED; }} catch(e5b) {{}} }}
         }}
-        var _justRag = ["verse","poem"];
+        var _justRag = ["verse","poem","block1","block","block2","blockleft"];
         for (var _q = 0; _q < _justRag.length; _q++) {{
             var _rs = doc.paragraphStyles.itemByName(_justRag[_q]);
             if (_rs && _rs.isValid) {{ try {{ _rs.justification = Justification.LEFT_ALIGN; }} catch(e5) {{}} }}
+        }}
+        var _spcStyles = ["Normal","body_text","block1","block","block2","copybody","quotes_normal","blockquote_italic","quote_italic_bold","blochquote_boldittalic","blockleft","bodytext_noendent","bodytext_Noendent"];
+        for (var _si = 0; _si < _spcStyles.length; _si++) {{
+            var _sst = doc.paragraphStyles.itemByName(_spcStyles[_si]);
+            if (_sst && _sst.isValid) {{
+                try {{ _sst.spaceBefore = 1.5; }} catch(eSb) {{}}
+                try {{ _sst.spaceAfter = 3; }} catch(eSa) {{}}
+            }}
         }}
         var _noHyph = ["chapter_name","chapter_name01","master_chapter_name","Sub-heading","after_chapter_name_heading","section_heading","Heading 1"];
         for (var _h = 0; _h < _noHyph.length; _h++) {{

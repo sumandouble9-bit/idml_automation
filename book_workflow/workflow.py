@@ -64,10 +64,13 @@ class BookWorkflow:
             self.injection.inject(books, force=force_run)
             self.injection.fix_chapter_double_breaks(books)
             self.injection.balance_tables(books)
+            self.injection.normalize_paragraph_spacing(books)
         if step == "3d":
             self.injection.fix_chapter_double_breaks(books)
         if step == "3e":
             self.injection.balance_tables(books)
+        if step == "3f":
+            self.injection.normalize_paragraph_spacing(books)
         # Post-injection bottom-gap fill (3b) disabled: vertical-justify runs BEFORE injection now
         # (see vertical_bottom_align.py). Re-enable by uncommenting the block below.
         # if step in ("all", "3b"):
@@ -83,9 +86,9 @@ def build_arg_parser():
     parser.add_argument("--lang", choices=["all", "es", "en"], default="all", help="Filter by language")
     parser.add_argument(
         "--step",
-        choices=["all", "va", "1", "2", "3", "3d", "3b", "3c", "4"],
+        choices=["all", "va", "1", "2", "3", "3d", "3e", "3f", "3b", "3c", "4"],
         default="all",
-        help="Workflow step to run (va=VerticalAlign-first, 1=Format, 2=Normalize, 3=Inject, 3b=GapFill, 4=Export PDF)",
+        help="Workflow step to run (va=VerticalAlign-first, 1=Format, 2=Normalize, 3=Inject, 3f=SpacingNorm, 4=Export PDF)",
     )
     parser.add_argument("--limit", type=int, default=None, help="Limit number of books to process")
     parser.add_argument("--force", action="store_true", help="Force processing even if already completed")
