@@ -724,14 +724,30 @@ class _StoryProcessor:
             if lname(psr.tag) == "ParagraphStyleRange":
                 if psr.attrib.get("AppliedParagraphStyle") == "ParagraphStyle/Normal":
                     continue
-                for c_elem in psr.iter():
-                    if lname(c_elem.tag) == "Content" and c_elem.text:
-                        if " " in c_elem.text:
-                            cleaned_t = re.sub(r"^ +", "", c_elem.text)
-                            cleaned_t = re.sub(r" +$", "", cleaned_t)
-                            if cleaned_t != c_elem.text:
-                                c_elem.text = cleaned_t
-                                self.changed = True
+                contents = [c for c in psr.iter() if lname(c.tag) == "Content" and c.text]
+                if contents:
+                    # Trim leading soft breaks only from the very start of the paragraph
+                    for c in contents:
+                        if not c.text:
+                            continue
+                        cleaned = re.sub(r"^\u2028+", "", c.text)
+                        if cleaned != c.text:
+                            c.text = cleaned
+                            self.changed = True
+                        if c.text.strip("\u2028"):
+                            break
+
+                    # Trim trailing soft breaks only from the very end of the paragraph
+                    for c in reversed(contents):
+                        if not c.text:
+                            continue
+                        cleaned = re.sub(r"\u2028+$", "", c.text)
+                        if cleaned != c.text:
+                            c.text = cleaned
+                            self.changed = True
+                        if c.text.strip("\u2028"):
+                            break
+
                 _pstyle_l = psr.attrib.get("AppliedParagraphStyle", "").lower()
                 _is_block_sty = any(k in _pstyle_l for k in ("block", "quote", "verse", "poem"))
                 _is_verse_p = _is_true_verse(psr)
